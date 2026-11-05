@@ -1,0 +1,16 @@
+[package]
+name = "padlink-cli"
+description = "PadLink desktop CLI and daemon (baseline scaffold)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "padlink"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+padlink-protocol.workspace = true
