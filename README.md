@@ -136,6 +136,25 @@ cargo clippy --workspace --all-targets -- -D warnings
 arguments but exit with status `2` and an explicit "not implemented" message.
 They do not print success or fake session data.
 
+## Continuous integration
+
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs on pushes to `main`,
+pull requests targeting `main`, and manual runs from GitHub's Actions tab.
+
+- **Rust:** formatting on Linux, plus Clippy and workspace/documentation tests
+  on Linux, macOS, and Windows. Dependency resolution uses `Cargo.lock`.
+- **Android:** Java 17, the checked-in Gradle wrapper, Android SDK 37, unit
+  tests, lint, debug and unsigned release builds, and instrumentation-test
+  compilation.
+- **Android emulator:** executes the Compose launch test on an API 35 emulator.
+  This is a UI smoke test; Wi-Fi, Bluetooth, touch latency, and gamepad backend
+  compatibility still require the physical-device tests in the plan.
+
+The pipeline uploads test/lint reports and the debug APK as seven-day workflow
+artifacts. It uses read-only repository permissions, dependency caches, pinned
+action revisions, and cancels superseded runs. It does not publish releases or
+require release-signing secrets.
+
 ## Scope note
 
 This scaffold deliberately contains **no pairing or cryptography fallback**.
