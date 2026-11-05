@@ -63,6 +63,9 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - name: Install the project's Android platform and build tools
         run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
       - name: Run unit tests, lint, and build debug/release APKs
@@ -106,6 +109,9 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - name: Install the project's Android platform and build tools
         run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
       - name: Enable hardware acceleration for the emulator
