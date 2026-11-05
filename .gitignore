@@ -1,0 +1,32 @@
+# macOS / editors
+.DS_Store
+.idea/
+*.iml
+.vscode/
+
+# Local tooling metadata
+.freebuff/
+
+# Android
+android/local.properties
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/captures/
+android/.cxx/
+*.apk
+*.aab
+*.hprof
+
+# Signing material - never commit
+*.jks
+*.keystore
+keystore.properties
+
+# Rust
+/target/
+
+# Environment files
+.env
+.env.*
