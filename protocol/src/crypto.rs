@@ -163,18 +163,18 @@ impl TrafficKey {
         info.push(domain.transport as u8);
         info.extend_from_slice(&domain.epoch.to_le_bytes());
 
-        let mut output = [0_u8; KEY_LEN + NONCE_PREFIX_LEN];
+        let mut output = Zeroizing::new([0_u8; KEY_LEN + NONCE_PREFIX_LEN]);
         let hkdf = Hkdf::<Sha256>::new(Some(&salt), root.expose());
-        hkdf.expand(&info, &mut output)
+        hkdf.expand(&info, output.as_mut())
             .map_err(|_| ProtocolError::Unavailable("HKDF expansion failed"))?;
 
-        let mut key = [0_u8; KEY_LEN];
+        let mut key = Zeroizing::new([0_u8; KEY_LEN]);
         key.copy_from_slice(&output[..KEY_LEN]);
         let mut nonce_prefix = [0_u8; NONCE_PREFIX_LEN];
         nonce_prefix.copy_from_slice(&output[KEY_LEN..]);
 
         Ok(Self {
-            key: Zeroizing::new(key),
+            key,
             nonce_prefix,
             session_tag: session_id.tag(),
             domain,
@@ -262,11 +262,11 @@ impl TrafficKey {
             });
         }
 
+        let frame = Frame::decode_payload(header.frame_type, &plaintext)?;
         if !replay.accept(header.seq) {
             return Err(ProtocolError::ReplayedSequence { seq: header.seq });
         }
 
-        let frame = Frame::decode_payload(header.frame_type, &plaintext)?;
         Ok(OpenedFrame { header, frame })
     }
 

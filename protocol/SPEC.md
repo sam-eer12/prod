@@ -1,10 +1,12 @@
 # PadLink Protocol Specification
 
-**Status:** draft wire core, revision 1. The frame codecs, key schedule,
-replay window, digital-edge journal, input assembler, clock bounds, and input
-watchdog are implemented in `protocol/src/` with unit tests. The PAKE handshake,
-pairing transport, resume MAC, discovery, sockets, and native backends are **not
-implemented**. This document is not a release or compatibility claim.
+**Status:** draft wire/pairing core, revision 1. Frame codecs, key schedule,
+replay, edge recovery, freshness, watchdog, and in-memory SPAKE2 pairing state
+machines are implemented and tested. Suite 1 is pinned and conformance-tested,
+**not independently audited**. Pairing transport, Android consent/token UI,
+request rate limits, resume MAC, discovery, sockets, daemon/IPC, and native
+backends are **not implemented**. User pairing remains unavailable. The current
+build is **not safe for live input** and makes no resource or gameplay claim.
 
 Every rule below is fail-closed: a receiver that cannot establish a requirement
 must reject the packet, remain neutral, and avoid advancing session state.
@@ -61,7 +63,7 @@ offset  size  field
 | `session_tag` | First two bytes of the 128-bit session ID, LE; not an authenticator |
 | `seq_num` | Starts at `0` for each distinct key; never reset under the same key |
 | AAD | The complete 12-byte clear header |
-| Replay check | Only after successful AEAD verification |
+| Replay check | Only after successful AEAD verification and payload validation |
 | Rekey threshold | Before `2^48`; refuse to seal at or above it |
 
 The nonce is **not** derived from a truncated session ID:
@@ -222,7 +224,8 @@ confirmed. Process restart loses the root and counters and requires new pairing.
 
 Each directional key keeps a 64-packet sliding replay window. A counter is
 accepted once. Duplicates are dropped; counters more than 64 behind the highest
-accepted value are dropped. The window advances only after AEAD verification.
+accepted value are dropped. The window advances only after AEAD verification
+and successful payload decoding, including length and reserved-bit checks.
 A forged high sequence number in a header that fails authentication has no
 effect.
 
@@ -234,13 +237,16 @@ exceed 500 ms; larger uncertainty means freshness cannot be established and
 output stays neutral.
 
 ```text
-earliest_sample = sample_time + offset - uncertainty
-latest_sample   = sample_time + offset + uncertainty
+offset_us       = peer_clock - local_clock
+earliest_sample = sample_time - offset - uncertainty
+latest_sample   = sample_time - offset + uncertainty
 ```
 
 If `earliest_sample > now`, the sample is implausibly in the future and is
 rejected. Otherwise the conservative sample time is
-`min(now, latest_sample)`, and the age upper bound is `now - conservative`.
+`clamp(earliest_sample, 0, now)`, and the age upper bound is `now - conservative`.
+Use the earliest possible time: uncertainty increases maximum age rather than
+making delayed input appear newer.
 A previously unseen sequence number can still carry stale input.
 
 ### 6.3 Input watchdog
@@ -260,6 +266,12 @@ A fresh epoch rearm requires a confirmed neutral baseline and a new
 disconnect, desktop lock/suspend, phone pause, and backend removal neutralize
 immediately. An explicit stop is never undone by a supervisor.
 
+`on_fresh_input` and `rearm` check existing deadlines before accepting an update;
+they cannot rely on a timer callback winning a race with a packet. Rearm grants
+a bounded neutral hold window for the new epoch's first State, but preserves the
+last fresh sample's 5 s/30 s deadlines. Only a newly accepted fresh State moves
+those deadlines. A stale State after rearm never advances the reference.
+
 ## 7. Pairing token rules
 
 - Six characters from `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (32 symbols, 30 bits).
@@ -272,11 +284,141 @@ immediately. An explicit stop is never undone by a supervisor.
 - The token, traffic keys, root secret, and pairing transcript must never appear
   in logs, arguments, QR payloads, or saved configuration.
 
-A six-character token is a 30-bit password, not a 256-bit secret. It must be
-consumed by a reviewed PAKE with fresh ephemeral state, transcript/role binding,
-explicit mutual key confirmation, and attempt limits. No X25519-plus-HMAC or
-commit-reveal substitute is approved. **No PAKE implementation is present in
-this revision, so pairing must remain blocked.**
+A six-character token is a 30-bit password, not a 256-bit secret. Suite 1 uses
+the pinned RFC 9382 implementation below with fresh ephemeral state,
+transcript/role binding, explicit mutual confirmation, and attempt limits. No
+X25519-plus-HMAC or commit-reveal substitute is approved. The implementation is
+conformance-tested rather than independently audited. G3 remains open; user
+pairing stays blocked until the real consent UI, transport and rate limits are
+implemented and tested, and the required security/ABI validation is complete.
+
+### 7.1 Selected suite and password mapping
+
+`PAKE_SUITE = 1` pins `pakery-spake2 = 0.6.2`, `pakery-crypto = 0.6.2`, and
+`pakery-core = 0.6.2`, with P-256, SHA-256, HKDF-SHA256, and HMAC-SHA256. The
+workspace requires Rust 1.88 or newer. Desktop is SPAKE2 Party A; phone is Party
+B. P-256 shares use canonical 65-byte SEC1 uncompressed encoding (`04 || x ||
+y`); invalid/noncanonical/off-curve/identity points fail closed.
+
+```text
+w = P256Group::scalar_from_wide_bytes(
+      SHA512("padlink/v1/pair-password" || normalized_code))
+```
+
+Wide scalar reduction is big-endian, as implemented by the pinned P-256 group.
+Each attempt uses a new ChaCha20 CSPRNG seeded by a fallible OS random read.
+OS entropy failure returns an error; no weak fallback or panic-prone OS RNG
+adapter is used. Deterministic scalars are enabled only by the dev test-utils
+feature for RFC vectors.
+
+### 7.2 Pre-authentication framing
+
+The desktop will initiate TCP to the phone's actual pairing endpoint. The
+socket implementation is still absent. The core codecs encode complete frames:
+
+```text
+length: u16 BE   # counts magic + ver_type + payload, excludes the prefix
+magic: u8       # 0x50
+ver_type: u8    # (1 << 4) | pairing_message_type
+payload
+```
+
+The total bound is 4096 bytes, **including** the two-byte prefix; the body is
+2–4094 bytes. A transport must validate the prefix before allocating/reading its
+body, use a short bounded read deadline, and reject truncation/trailing bytes.
+All payload integers below are LE. Pairing message nibbles are independent of
+the post-auth encrypted frame types.
+
+| Type | Message | Payload fields, in order | Payload bytes |
+| ---: | :--- | :--- | ---: |
+| 1 | Request | `version:u16`, `suite:u16`, `request_id:[u8;16]`, `desktop_nonce:[u8;16]`, `label_len:u16`, `label:UTF-8` | 39–102 |
+| 2 | Accept | `version:u16`, `suite:u16`, `request_id:[u8;16]`, `phone_nonce:[u8;16]`, `session_id:[u8;16]` | 52 |
+| 3 | PakeA | `request_id:[u8;16]`, `pA:[u8;65]` | 81 |
+| 4 | PakeB | `request_id:[u8;16]`, `pB:[u8;65]`, `cB:[u8;32]` | 113 |
+| 5 | ConfirmA | `request_id:[u8;16]`, `cA:[u8;32]` | 48 |
+| 6 | Abort | `request_id:[u8;16]`, `reason:u8` | 17 |
+
+The label is nonempty, at most 64 UTF-8 bytes, and rejects control/terminal and
+bidirectional override/isolate characters. It must be displayed as unverified.
+Only version 1/suite 1 are offered or selected: there is no downgrade
+negotiation. Capabilities and endpoints are not negotiated in this revision;
+live input stays blocked pending their authenticated integration. A Request's
+codec does not generate a token or imply Allow. Accept is generated only by
+the explicit `PhoneHandshake::consent` operation after the user's Allow action.
+
+### 7.3 Identity, transcript, and root binding
+
+```text
+identity_A = "padlink/v1/pair-desktop" || request_id || desktop_nonce
+identity_B = "padlink/v1/pair-phone"   || request_id || phone_nonce
+
+AAD = "padlink/v1/pair-aad" || version_le16 || suite_le16 || request_id
+      || desktop_nonce || phone_nonce || session_id || label_len_le16 || label
+
+salt = SHA256("padlink/v1/pair-transcript" || AAD || pA || pB)
+root = HKDF-SHA256(ikm=Ke, salt=salt,
+                  info="padlink/v1/session-root", length=32)
+```
+
+The library produces a 16-byte `Ke` and two 32-byte confirmation MACs. Expanding
+Ke to a 32-byte root does not increase the suite's 128-bit security strength.
+SPAKE2's RFC key schedule and MACs are supplied by the pinned implementation;
+PadLink does not replace their mutual confirmation with a custom authenticator.
+Changing roles, label, nonces, session ID, version, suite, or key shares fails
+confirmation. Password, root, and ephemeral state are never wire fields; debug
+output for handshake/session/messages redacts transcript and secret material.
+
+### 7.4 Confirmation and neutral ready
+
+1. Desktop sends Request; phone displays the unverified label/address and waits
+   for consent. Only Allow issues a six-character token and sends Accept.
+2. User enters the phone's token in hidden CLI input (not implemented yet).
+   Desktop sends fresh PakeA.
+3. Phone reserves an attempt and replies with fresh PakeB and `cB`.
+4. Desktop verifies `cB` and sends `cA`. Its session remains private/pending.
+5. Phone verifies `cA`, derives the root/traffic keys, invalidates the token,
+   and seals `EpochConfirm(epoch=1, baseline_edge_id=0, neutral flag=1)` under
+   phone→desktop/TCP with sequence 0.
+6. Desktop releases its pairing session only after this exact ready frame
+   authenticates. Wrong type/epoch/sequence/flags, tag failure, or expiry cannot
+   release a desktop session. Its TCP replay window already includes ready.
+
+The core returns traffic ownership; it does not mount a controller or authorize
+live input. Path probing, neutral physical touch state, permissions, backend
+readiness, and watchdog integration are additional gates. The transport must
+cancel incomplete requests and erase pending state on disconnect/timeout.
+
+### 7.5 Attempt ownership and expiry
+
+`begin_attempt(now_ms)` decrements once when a valid PakeA is accepted. A return
+of zero permits the third attempt to finish. `fail_attempt()` does not decrement
+again; it invalidates the token only when no attempts remain. Confirmed success,
+expiry, cancellation, replacement, or deny invalidates it immediately.
+
+Retries retain the same consented request, session ID, token, and original
+phone-side 60 s deadline, while using new PAKE ephemerals. A new valid PakeA
+abandons any unfinished previous attempt. The phone checks its deadline both
+before key-share processing and before confirmation. An expired token cannot be
+revived by a reconnect. Desktop retries discard pending PAKE/session material.
+
+Malformed local code input is rejected and counted by the local token checker.
+Malformed pre-auth wire data and invalid points are rejected before PAKE; they
+must be covered by the transport's read/connection/request limits. Invalid
+points do not consume a password-verification attempt in this core. Before
+exposing a server, enforce one pending request and phone-wide/per-source
+five-requests/minute limits; new sockets or source addresses must not reset the
+global limiter. These limits and the actual phone consent UI are not present.
+
+### 7.6 Conformance evidence and limitations
+
+`protocol/tests/rfc9382.rs` matches RFC 9382 Appendix B's pA, pB, Ke, cA and cB
+exactly, including `Ke=0e0672dc86f8e45565d338b0540abe69`. The deterministic
+vector also checks both peer confirmations and rejects reflected/truncated
+MACs. `pairing_flow.rs` tests the PadLink wrapper's fresh exchanges, wrong-code
+retries, third-attempt behavior, expiry, metadata/confirmation/ready tampering,
+codecs, and bidirectional encrypted traffic. This is not an audit or proof of
+transport security, Android interoperability, live-input safety, resource
+containment, or gameplay compatibility.
 
 ## 8. Error handling
 
@@ -334,8 +476,13 @@ ChaCha20-Poly1305/HKDF implementation.
 - snapshot/edge cursor semantics;
 - clock offset, uncertainty, future samples, and stale samples;
 - 250 ms neutral, 5 s reconnect, 30 s expiry, rearm, and explicit neutralization.
+- RFC 9382 Appendix B and the pairing/ready failure cases in §7.6;
+- packet/timer races, expiry-preserving rearm, atomic rejected edge batches,
+  replay preservation on malformed authenticated payloads, and separate reports
+  for recovered press/release transitions.
 
-Still required before this core can be used: a reviewed PAKE, pairing transport
-and consent UI, resume handshake, authenticated path probes, TCP framing,
+Still required before live-input use: security and Android ABI validation,
+pairing transport and consent UI, request rate limits, resume handshake,
+authenticated path probes, streaming TCP transport framing,
 daemon/IPC ownership, native backends, and the failure-injection matrix in
 `IMPLEMENTATION_PLAN.md`.

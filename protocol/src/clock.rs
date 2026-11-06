@@ -10,8 +10,8 @@ use crate::error::ProtocolError;
 
 /// Beyond this measured uncertainty, freshness is considered unknowable.
 ///
-/// The value is deliberately much larger than the 250 ms input watchdog so a
-/// clock-sync failure cannot accidentally pass freshness checks.
+/// This is an absolute ceiling. Even smaller uncertainties can make a sample
+/// too old for the configured hold deadline.
 pub const MAX_CLOCK_UNCERTAINTY_US: u64 = 500_000;
 
 /// A conservative interval around the peer's monotonic clock.
@@ -37,7 +37,7 @@ impl ClockBounds {
         })
     }
 
-    /// The newest local-clock instant at which the sample could have occurred.
+    /// The earliest local-clock instant at which the sample could have occurred.
     ///
     /// Returns an error when even the earliest possible moment is in the
     /// future beyond the measured bounds. The result is capped at `now_us`,
@@ -52,12 +52,12 @@ impl ClockBounds {
         let uncertainty = i128::from(self.uncertainty_us);
         let now = i128::from(now_us);
 
-        if sample + offset - uncertainty > now {
+        let earliest = sample - offset - uncertainty;
+        if earliest > now {
             return Err(ProtocolError::FutureSampleTime);
         }
 
-        let upper = sample + offset + uncertainty;
-        let capped = upper.clamp(0, i128::from(u64::MAX));
+        let capped = earliest.clamp(0, i128::from(u64::MAX));
         Ok((capped as u64).min(now_us))
     }
 
@@ -105,14 +105,14 @@ mod tests {
 
     #[test]
     fn offset_moves_the_estimate() {
-        let bounds = ClockBounds::new(1_000, 0).unwrap();
+        let bounds = ClockBounds::new(-1_000, 0).unwrap();
         assert_eq!(
             bounds.conservative_sample_time(5_000, 3_900).unwrap(),
             4_900
         );
         assert_eq!(bounds.age_upper_bound(5_000, 3_900).unwrap(), 100);
 
-        let bounds = ClockBounds::new(-1_000, 0).unwrap();
+        let bounds = ClockBounds::new(1_000, 0).unwrap();
         assert_eq!(
             bounds.conservative_sample_time(5_000, 6_000).unwrap(),
             5_000
@@ -125,9 +125,15 @@ mod tests {
         let bounds = ClockBounds::new(0, 100).unwrap();
         assert_eq!(
             bounds.conservative_sample_time(10_000, 8_900).unwrap(),
-            9_000
+            8_800
         );
-        assert_eq!(bounds.age_upper_bound(10_000, 8_900).unwrap(), 1_000);
+        assert_eq!(bounds.age_upper_bound(10_000, 8_900).unwrap(), 1_200);
+        assert!(
+            !ClockBounds::new(0, 500_000)
+                .unwrap()
+                .is_fresh(1_000_000, 600_000, 250_000)
+                .unwrap()
+        );
     }
 
     #[test]
@@ -151,13 +157,13 @@ mod tests {
 
     #[test]
     fn extreme_values_do_not_overflow() {
-        let bounds = ClockBounds::new(i64::MAX, MAX_CLOCK_UNCERTAINTY_US).unwrap();
+        let bounds = ClockBounds::new(i64::MIN, MAX_CLOCK_UNCERTAINTY_US).unwrap();
         assert_eq!(
             bounds.conservative_sample_time(u64::MAX, u64::MAX),
             Err(ProtocolError::FutureSampleTime)
         );
 
-        let bounds = ClockBounds::new(i64::MIN, 0).unwrap();
+        let bounds = ClockBounds::new(i64::MAX, 0).unwrap();
         assert_eq!(bounds.conservative_sample_time(u64::MAX, 0).unwrap(), 0);
         assert_eq!(bounds.age_upper_bound(u64::MAX, 0).unwrap(), u64::MAX);
     }

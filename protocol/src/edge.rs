@@ -165,6 +165,8 @@ impl EdgeReceiver {
     /// Duplicates are ignored. IDs farther than [`MAX_EDGE_JOURNAL`] ahead of
     /// the current cursor are rejected rather than buffered.
     pub fn receive(&mut self, entries: &[Edge]) -> Result<EdgeDelivery, ProtocolError> {
+        // Validate the complete batch before inserting any entry. A rejected
+        // batch must not become input through a later receive operation.
         for edge in entries {
             if edge.edge_id <= self.highest_contiguous {
                 continue;
@@ -180,7 +182,11 @@ impl EdgeReceiver {
                     highest_contiguous: self.highest_contiguous,
                 });
             }
-
+        }
+        for edge in entries {
+            if edge.edge_id <= self.highest_contiguous {
+                continue;
+            }
             if self.reorder.contains_key(&edge.edge_id) {
                 continue;
             }
@@ -193,8 +199,11 @@ impl EdgeReceiver {
         }
 
         let mut applied = Vec::new();
-        while let Some(edge) = self.reorder.remove(&(self.highest_contiguous + 1)) {
-            self.highest_contiguous += 1;
+        while let Some(next) = self.highest_contiguous.checked_add(1) {
+            let Some(edge) = self.reorder.remove(&next) else {
+                break;
+            };
+            self.highest_contiguous = next;
             applied.push(edge);
         }
 
@@ -212,7 +221,11 @@ impl EdgeReceiver {
 
     /// First missing edge ID when a gap exists.
     pub fn missing_from(&self) -> Option<u64> {
-        (!self.reorder.is_empty()).then_some(self.highest_contiguous + 1)
+        if self.reorder.is_empty() {
+            None
+        } else {
+            self.highest_contiguous.checked_add(1)
+        }
     }
 
     /// Number of buffered transitions waiting on a gap.

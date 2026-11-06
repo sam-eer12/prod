@@ -5,7 +5,7 @@ members = ["desktop", "protocol"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "UNLICENSED"
 publish = false
 
@@ -15,6 +15,11 @@ clap = { version = "4.5", features = ["derive"] }
 getrandom = "0.4"
 hkdf = "0.12.4"
 padlink-protocol = { path = "protocol" }
+pakery-core = "=0.6.2"
+pakery-crypto = { version = "=0.6.2", default-features = false, features = ["std", "p256", "spake2"] }
+pakery-spake2 = "=0.6.2"
+rand_chacha = "0.10"
+rand_core = "0.10"
 sha2 = "0.10.9"
 subtle = "2.6"
 zeroize = { version = "1.8", features = ["derive"] }

@@ -41,6 +41,21 @@ pub enum ProtocolError {
     PairingTokenLocked,
     /// The submitted pairing code was wrong.
     PairingCodeMismatch { attempts_remaining: u8 },
+    /// The peer offered or selected a pairing suite this build does not support.
+    UnsupportedSuite(u16),
+    /// A pairing label was empty, too long, or contained control characters.
+    InvalidLabel,
+    /// A pairing message did not match the active request or transcript.
+    PairingRequestMismatch,
+    /// A pairing message arrived in a state that cannot accept it.
+    PairingState,
+    /// The peer aborted the pairing request with a numeric reason.
+    PairingAborted { reason: u8 },
+    /// The password-authenticated exchange or its key confirmation failed.
+    ///
+    /// The variants deliberately collapse transcript, point, and confirmation
+    /// failures so a caller cannot use the error as a guessing oracle.
+    PakeFailed,
     /// The operating system random source failed.
     RandomUnavailable,
     /// The bounded digital-edge journal has no room for another transition.
@@ -108,6 +123,14 @@ impl fmt::Display for ProtocolError {
                     "pairing code mismatch; {attempts_remaining} attempts remain"
                 )
             }
+            Self::UnsupportedSuite(suite) => write!(formatter, "unsupported pairing suite {suite}"),
+            Self::InvalidLabel => write!(formatter, "pairing label is invalid"),
+            Self::PairingRequestMismatch => write!(formatter, "pairing request does not match"),
+            Self::PairingState => write!(formatter, "pairing message is invalid in this state"),
+            Self::PairingAborted { reason } => {
+                write!(formatter, "pairing aborted (reason {reason})")
+            }
+            Self::PakeFailed => write!(formatter, "password-authenticated exchange failed"),
             Self::RandomUnavailable => write!(formatter, "system random source unavailable"),
             Self::EdgeJournalFull { capacity } => {
                 write!(formatter, "digital-edge journal full ({capacity} entries)")

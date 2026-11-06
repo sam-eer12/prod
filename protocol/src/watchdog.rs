@@ -57,6 +57,7 @@ pub struct Watchdog {
     neutral_ms: u16,
     phase: WatchdogPhase,
     reference_us: u64,
+    hold_reference_us: u64,
     output_allowed: bool,
 }
 
@@ -72,6 +73,7 @@ impl Watchdog {
             neutral_ms,
             phase: WatchdogPhase::Idle,
             reference_us: 0,
+            hold_reference_us: 0,
             output_allowed: false,
         })
     }
@@ -80,6 +82,7 @@ impl Watchdog {
     pub fn activate(&mut self, now_us: u64) {
         self.phase = WatchdogPhase::Active;
         self.reference_us = now_us;
+        self.hold_reference_us = now_us;
         self.output_allowed = false;
     }
 
@@ -94,28 +97,33 @@ impl Watchdog {
         conservative_sample_us: u64,
         now_us: u64,
     ) -> Result<bool, ProtocolError> {
+        self.tick(now_us);
         if self.phase != WatchdogPhase::Active {
             return Err(ProtocolError::WatchdogNotRearmable);
         }
         if conservative_sample_us < self.reference_us {
             return Err(ProtocolError::StaleSampleTime);
         }
+        if conservative_sample_us > now_us {
+            return Err(ProtocolError::FutureSampleTime);
+        }
 
-        self.reference_us = conservative_sample_us;
-        let neutral_at = self.reference_us.saturating_add(self.neutral_us());
+        let neutral_at = conservative_sample_us.saturating_add(self.neutral_us());
         if now_us >= neutral_at {
             self.phase = WatchdogPhase::Neutral;
             self.output_allowed = false;
             return Ok(false);
         }
 
+        self.reference_us = conservative_sample_us;
+        self.hold_reference_us = conservative_sample_us;
         self.output_allowed = true;
         Ok(true)
     }
 
     /// Advances deadlines and returns the highest transition reached.
     pub fn tick(&mut self, now_us: u64) -> WatchdogTick {
-        let neutral_at = self.reference_us.saturating_add(self.neutral_us());
+        let neutral_at = self.hold_reference_us.saturating_add(self.neutral_us());
         let reconnect_at = self.reference_us.saturating_add(RECONNECT_AFTER_MS * 1_000);
         let expire_at = self.reference_us.saturating_add(EXPIRE_AFTER_MS * 1_000);
 
@@ -125,7 +133,9 @@ impl Watchdog {
             self.phase = WatchdogPhase::Expired;
             self.output_allowed = false;
             WatchdogEvent::Expired
-        } else if now_us >= reconnect_at {
+        } else if now_us >= reconnect_at
+            && !(self.phase == WatchdogPhase::Active && !self.output_allowed && now_us < neutral_at)
+        {
             if self.phase == WatchdogPhase::Reconnecting {
                 WatchdogEvent::None
             } else {
@@ -174,6 +184,7 @@ impl Watchdog {
     /// The next fresh State sample starts output. An expired watchdog cannot be
     /// rearmed; the caller must run the six-character pairing flow again.
     pub fn rearm(&mut self, now_us: u64) -> Result<(), ProtocolError> {
+        self.tick(now_us);
         if !matches!(
             self.phase,
             WatchdogPhase::Active | WatchdogPhase::Neutral | WatchdogPhase::Reconnecting
@@ -182,7 +193,9 @@ impl Watchdog {
         }
 
         self.phase = WatchdogPhase::Active;
-        self.reference_us = now_us;
+        // Give the new epoch a bounded window to send State, while preserving
+        // the last actual input's reconnect/expiry deadlines.
+        self.hold_reference_us = now_us;
         self.output_allowed = false;
         Ok(())
     }
@@ -265,7 +278,7 @@ mod tests {
     #[test]
     fn late_sample_gets_only_the_remainder_of_the_deadline() {
         let mut watchdog = Watchdog::new(DEFAULT_NEUTRAL_MS).unwrap();
-        watchdog.activate(0);
+        watchdog.activate(ms(800));
 
         // The sample was taken 200 ms ago, so only 50 ms of hold remains.
         assert!(watchdog.on_fresh_input(ms(800), ms(1_000)).unwrap());
@@ -278,7 +291,10 @@ mod tests {
         let mut watchdog = Watchdog::new(DEFAULT_NEUTRAL_MS).unwrap();
         watchdog.activate(0);
 
-        assert!(!watchdog.on_fresh_input(0, ms(300)).unwrap());
+        assert_eq!(
+            watchdog.on_fresh_input(0, ms(300)),
+            Err(ProtocolError::WatchdogNotRearmable)
+        );
         assert_eq!(watchdog.phase(), WatchdogPhase::Neutral);
         assert!(!watchdog.output_allowed());
     }
@@ -286,7 +302,7 @@ mod tests {
     #[test]
     fn stale_sample_cannot_move_the_reference_backwards() {
         let mut watchdog = Watchdog::new(DEFAULT_NEUTRAL_MS).unwrap();
-        watchdog.activate(0);
+        watchdog.activate(ms(500));
         watchdog.on_fresh_input(ms(500), ms(500)).unwrap();
         assert_eq!(
             watchdog.on_fresh_input(ms(400), ms(501)),
@@ -333,7 +349,7 @@ mod tests {
     #[test]
     fn explicit_neutralization_does_not_extend_resume_deadline() {
         let mut watchdog = Watchdog::new(DEFAULT_NEUTRAL_MS).unwrap();
-        watchdog.activate(0);
+        watchdog.activate(ms(1_000));
         watchdog.on_fresh_input(ms(1_000), ms(1_000)).unwrap();
         watchdog.neutralize_now();
         assert_eq!(watchdog.tick(ms(6_000)).phase, WatchdogPhase::Reconnecting);

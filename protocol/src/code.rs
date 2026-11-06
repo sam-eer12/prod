@@ -70,8 +70,8 @@ pub fn normalize_pairing_code(input: &str) -> Result<String, ProtocolError> {
 /// Each byte maps to one of 32 symbols with `byte & 0x1F`. This is uniform
 /// because 32 divides 256; no modulo bias is introduced.
 pub fn generate_pairing_code() -> Result<String, ProtocolError> {
-    let mut random = [0_u8; PAIRING_CODE_LENGTH];
-    getrandom::fill(&mut random).map_err(|_| ProtocolError::RandomUnavailable)?;
+    let mut random = Zeroizing::new([0_u8; PAIRING_CODE_LENGTH]);
+    getrandom::fill(random.as_mut()).map_err(|_| ProtocolError::RandomUnavailable)?;
 
     Ok(random
         .iter()
@@ -138,11 +138,14 @@ impl PairingToken {
         self.code.is_some() && now_ms < self.expires_at_ms
     }
 
-    /// Verifies a submitted code and consumes one attempt on failure.
+    /// Reserves one PAKE attempt and returns the number of attempts remaining.
     ///
-    /// Success, expiry, or the third failure invalidates the token. The caller
-    /// must discard it and require fresh phone consent before another attempt.
-    pub fn check(&mut self, candidate: &str, now_ms: u64) -> Result<(), ProtocolError> {
+    /// Call this once for each password-authenticated exchange the token
+    /// authorizes, before accepting any PAKE key share. A return value of `0`
+    /// means this is the final permitted attempt: success must invalidate the
+    /// token and failure must call [`Self::fail_attempt`]. Reconnecting does not
+    /// replenish attempts because they live in this token.
+    pub fn begin_attempt(&mut self, now_ms: u64) -> Result<u8, ProtocolError> {
         if self.code.is_none() {
             return Err(ProtocolError::PairingTokenLocked);
         }
@@ -150,10 +153,41 @@ impl PairingToken {
             self.invalidate();
             return Err(ProtocolError::PairingTokenExpired);
         }
+        if self.attempts_remaining == 0 {
+            self.invalidate();
+            return Err(ProtocolError::PairingTokenLocked);
+        }
+
+        self.attempts_remaining -= 1;
+        Ok(self.attempts_remaining)
+    }
+
+    /// Marks the attempt reserved by [`Self::begin_attempt`] as failed.
+    ///
+    /// This does not consume another attempt. It invalidates the token when the
+    /// failed attempt was the last one.
+    pub fn fail_attempt(&mut self) {
+        if self.attempts_remaining == 0 {
+            self.invalidate();
+        }
+    }
+
+    /// Verifies a submitted code locally and consumes one attempt on failure.
+    ///
+    /// The pairing transport does not send the code to the phone, so the PAKE
+    /// path uses [`Self::begin_attempt`] and [`Self::fail_attempt`] instead.
+    /// This helper exists for local checks and tests.
+    ///
+    /// Success, expiry, or the third failure invalidates the token. The caller
+    /// must discard it and require fresh phone consent before another attempt.
+    pub fn check(&mut self, candidate: &str, now_ms: u64) -> Result<(), ProtocolError> {
+        let remaining = self.begin_attempt(now_ms)?;
 
         let Ok(normalized) = normalize_pairing_code(candidate) else {
-            return Err(self.record_failure());
+            self.fail_attempt();
+            return Err(Self::mismatch_error(remaining));
         };
+        let normalized = Zeroizing::new(normalized);
 
         let matches = self
             .code
@@ -164,7 +198,8 @@ impl PairingToken {
             self.invalidate();
             Ok(())
         } else {
-            Err(self.record_failure())
+            self.fail_attempt();
+            Err(Self::mismatch_error(remaining))
         }
     }
 
@@ -174,14 +209,12 @@ impl PairingToken {
         self.attempts_remaining = 0;
     }
 
-    fn record_failure(&mut self) -> ProtocolError {
-        self.attempts_remaining = self.attempts_remaining.saturating_sub(1);
-        if self.attempts_remaining == 0 {
-            self.invalidate();
+    fn mismatch_error(remaining: u8) -> ProtocolError {
+        if remaining == 0 {
             ProtocolError::PairingTokenLocked
         } else {
             ProtocolError::PairingCodeMismatch {
-                attempts_remaining: self.attempts_remaining,
+                attempts_remaining: remaining,
             }
         }
     }

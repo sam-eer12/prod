@@ -6,7 +6,7 @@
 //! snapshot. A snapshot ahead of the cursor requests retransmission; one behind
 //! the cursor cannot roll buttons back.
 
-use crate::edge::EdgeDelivery;
+use crate::edge::{EdgeDelivery, MAX_EDGE_JOURNAL};
 use crate::error::ProtocolError;
 use crate::frame::{Buttons, StatePayload, Stick};
 
@@ -65,23 +65,38 @@ impl InputAssembler {
         }
     }
 
-    /// Applies a contiguous edge delivery.
-    pub fn apply_edges(&mut self, delivery: &EdgeDelivery) -> Result<(), ProtocolError> {
+    /// Applies a contiguous edge delivery and returns one backend report for
+    /// each transition. A press/release pair must never collapse into one report.
+    /// The entire delivery is validated before changing the assembler.
+    pub fn apply_edges(
+        &mut self,
+        delivery: &EdgeDelivery,
+    ) -> Result<Vec<OutputState>, ProtocolError> {
+        if delivery.applied.len() > MAX_EDGE_JOURNAL {
+            return Err(ProtocolError::EdgeJournalFull {
+                capacity: MAX_EDGE_JOURNAL,
+            });
+        }
+        let mut cursor = self.cursor;
         for edge in &delivery.applied {
-            let expected = self
-                .cursor
+            let expected = cursor
                 .checked_add(1)
                 .ok_or(ProtocolError::SequenceExhausted)?;
             if edge.edge_id != expected {
                 return Err(ProtocolError::EdgeOutOfWindow {
                     edge_id: edge.edge_id,
-                    highest_contiguous: self.cursor,
+                    highest_contiguous: cursor,
                 });
             }
+            cursor = edge.edge_id;
+        }
+        let mut reports = Vec::with_capacity(delivery.applied.len());
+        for edge in &delivery.applied {
             self.output.buttons = edge.buttons;
             self.cursor = edge.edge_id;
+            reports.push(self.output);
         }
-        Ok(())
+        Ok(reports)
     }
 
     /// Applies one authenticated, fresh State snapshot.

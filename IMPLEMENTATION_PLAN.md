@@ -401,6 +401,22 @@ The desktop CLI/backend must be downloadable through **curl and Homebrew**, with
 
 ## 5. Phased Implementation Roadmap
 
+### Implementation status — 2026-11-06
+
+The Rust workspace and native Android/Compose shell exist. The shared core now
+implements State/Edges/control codecs, directional traffic keys and replay,
+bounded edge delivery with one backend report per transition, conservative
+freshness and watchdog rules, and an in-memory six-character SPAKE2 pairing
+handshake. Suite 1 pins pakery 0.6.2's P-256 implementation and matches RFC 9382
+Appendix B vectors; it is not independently audited.
+
+The Phase 1 checkboxes below remain open where they include unfinished work:
+JNI/ABI validation, transport framing/integration, request rate limiting,
+resume/migration, resource accounting, and failure cleanup. Real phone consent
+and token UI, sockets, discovery, daemon/IPC, and gamepad backends are absent.
+User pairing and live input remain unavailable; G1–G5 are not closed by these
+core tests. See `protocol/SPEC.md` for the implemented wire contract.
+
 Phases are ordered by dependency and risk. Every PRD P0 requirement needs implementation and evidence; optional modes do not close a failed native-compatibility or hard-memory gate.
 
 ### Phase 0: Feasibility and Release Contract

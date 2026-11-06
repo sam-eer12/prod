@@ -3,16 +3,18 @@
 //! This crate is the single source of truth for:
 //!
 //! - six-character pairing-code shape, generation, and attempt limits;
+//! - pinned RFC 9382 SPAKE2 pairing codecs and mutual-confirmation state machines;
 //! - exact State/Edges/Ack/control frame layouts;
 //! - HKDF traffic-key derivation and ChaCha20-Poly1305 envelopes;
 //! - per-key replay windows and sequence limits;
 //! - the bounded digital-edge journal and receiver reordering;
 //! - conservative clock bounds, input freshness, and the input watchdog.
 //!
-//! It deliberately does **not** implement the PAKE handshake, discovery,
-//! sockets, native gamepad backends, or a daemon. Pairing must remain blocked
-//! until a reviewed PAKE implementation consumes [`code::PairingToken`] and
-//! produces the session root and ID used here.
+//! It deliberately does **not** implement pairing sockets, phone consent UI,
+//! discovery, native gamepad backends, or a daemon. The selected PAKE dependency
+//! is pinned and RFC-vector-tested, not independently audited. User pairing
+//! remains blocked until the real consent, bounded transport, and rate limits
+//! exist. This build is not safe for live input.
 //!
 //! See `protocol/SPEC.md` for the normative wire contract.
 
@@ -23,6 +25,7 @@ pub mod edge;
 pub mod error;
 pub mod frame;
 pub mod input;
+pub mod pairing;
 pub mod watchdog;
 
 pub use code::{
@@ -30,6 +33,7 @@ pub use code::{
     PairingToken, generate_pairing_code, is_well_formed_pairing_code, normalize_pairing_code,
 };
 pub use error::ProtocolError;
+pub use pairing::{DesktopHandshake, PAKE_SUITE, PairedSession, PhoneHandshake};
 
 /// Wire protocol revision. Bump when a change breaks interoperability.
 pub const PROTOCOL_VERSION: u16 = 1;

@@ -66,7 +66,14 @@ fn short_tap_survives_transport_and_drives_the_watchdog() {
     };
     let delivery = receiver.receive(&payload.entries).unwrap();
     assert_eq!(delivery.applied.len(), 2);
-    assembler.apply_edges(&delivery).unwrap();
+    let reports = assembler.apply_edges(&delivery).unwrap();
+    assert_eq!(
+        reports
+            .iter()
+            .map(|report| report.buttons)
+            .collect::<Vec<_>>(),
+        vec![Buttons::A, Buttons::neutral()]
+    );
     assert_eq!(assembler.output().buttons, Buttons::neutral());
 
     let opened_state = desktop.open_frame(&state_packet, &mut replay).unwrap();
