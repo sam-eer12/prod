@@ -20,7 +20,8 @@ pub enum Role {
 pub struct PairedSession {
     session_id: SessionId,
     role: Role,
-    _root: SessionSecret,
+    pub(crate) root: SessionSecret,
+    epoch: u32,
     send_udp: TrafficKey,
     receive_udp: TrafficKey,
     send_tcp: TrafficKey,
@@ -35,13 +36,26 @@ impl PairedSession {
         session_id: SessionId,
         role: Role,
     ) -> Result<Self, ProtocolError> {
+        Self::new_epoch(root, session_id, role, 1)
+    }
+
+    pub(crate) fn new_epoch(
+        root: SessionSecret,
+        session_id: SessionId,
+        role: Role,
+        epoch: u32,
+    ) -> Result<Self, ProtocolError> {
         let send = match role {
             Role::Desktop => Direction::DesktopToPhone,
             Role::Phone => Direction::PhoneToDesktop,
         };
         let receive = send.opposite();
         let derive = |direction, transport| {
-            TrafficKey::derive(&root, session_id, KeyDomain::new(direction, transport, 1))
+            TrafficKey::derive(
+                &root,
+                session_id,
+                KeyDomain::new(direction, transport, epoch),
+            )
         };
         let send_udp = derive(send, Transport::Udp)?;
         let receive_udp = derive(receive, Transport::Udp)?;
@@ -50,7 +64,8 @@ impl PairedSession {
         Ok(Self {
             session_id,
             role,
-            _root: root,
+            root,
+            epoch,
             send_udp,
             receive_udp,
             send_tcp,
@@ -67,6 +82,11 @@ impl PairedSession {
         self.role
     }
 
+    pub const fn epoch(&self) -> u32 {
+        self.epoch
+    }
+
+    /// UDP returns an envelope; TCP returns a complete length-prefixed frame.
     pub fn seal(&mut self, transport: Transport, frame: &Frame) -> Result<Vec<u8>, ProtocolError> {
         match transport {
             Transport::Udp => self.send_udp.seal_frame(frame),

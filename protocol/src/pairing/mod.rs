@@ -9,6 +9,7 @@ mod handshake;
 pub mod host;
 mod pake;
 mod random;
+pub mod resume;
 mod session;
 pub mod transport;
 pub mod wire;
