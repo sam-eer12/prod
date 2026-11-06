@@ -1,10 +1,11 @@
 # PadLink
 
 PadLink turns an Android phone into a low-latency gamepad for a desktop on the
-same local network. This repository is at the **initial project setup** stage:
-the Android app builds and runs, and the desktop CLI has its baseline command
-surface. Discovery, pairing, controller input, and gamepad backends are not
-implemented yet.
+same local network. This repository is at the **foundation** stage: the Android
+app builds and runs, the desktop CLI has its baseline command surface, and the
+shared Rust protocol core defines framing, key derivation, replay protection,
+lost-edge recovery, freshness, and watchdog behavior. Discovery, pairing,
+sockets, controller input, and gamepad backends are not implemented yet.
 
 The product requirements and engineering plan live in
 [PRD.md](PRD.md) and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). The
@@ -17,8 +18,8 @@ original product prompt is preserved at the top of the PRD.
 | Android app (native Kotlin) | Buildable debug/release APKs, Material 3 Compose shell, dark controller-inspired theme, settings and build-info screens |
 | Android tests | JVM unit tests for the pairing-code shape rules; one Compose launch test (requires a device/emulator) |
 | Desktop CLI | Rust 2024 / Cargo workspace, `clap` command surface, honest `not implemented` exits for unfinished commands |
-| Shared protocol crate | Version/code-alphabet constants and tests; no PAKE, framing, or replay protection yet |
-| Documentation | PRD, implementation plan, controller layout reference, protocol draft |
+| Shared protocol crate | Exact State/Edges/Ack/control codecs, HKDF traffic-key schedule, ChaCha20-Poly1305 envelope, replay window, bounded edge journal, input assembler, clock-freshness rules, and watchdog; no PAKE or transport yet |
+| Documentation | PRD, implementation plan, controller layout reference, protocol specification |
 
 Android Studio is the build/debug IDE. The installed app runs on Android's ART
 runtime; the desktop tool is a separate native Rust binary.
@@ -134,7 +135,20 @@ cargo clippy --workspace --all-targets -- -D warnings
 `status` reports the scaffold state and protocol revision. Commands such as
 `scan`, `connect`, `disconnect`, `doctor`, `daemon`, and `autostart` parse their
 arguments but exit with status `2` and an explicit "not implemented" message.
-They do not print success or fake session data.
+They do not print success or fake session data. The CLI does not yet use the
+protocol core.
+
+Protocol-core checks:
+
+```sh
+cargo test -p padlink-protocol
+cargo clippy -p padlink-protocol --all-targets -- -D warnings
+```
+
+`protocol/SPEC.md` documents the exact frame layouts, key schedule, replay and
+freshness rules, watchdog timings, and the golden State vector. The core is
+**not** safe for live input until a reviewed PAKE and the pairing transport
+exist.
 
 ## Continuous integration
 
@@ -157,12 +171,14 @@ require release-signing secrets.
 
 ## Scope note
 
-This scaffold deliberately contains **no pairing or cryptography fallback**.
-Do not use this build to transmit real input. The next milestones from the
-implementation plan are:
+This scaffold deliberately contains **no PAKE or fallback authentication**.
+Do not use this build to transmit real input. The protocol core now defines
+framing, key derivation, replay protection, lost-edge recovery, freshness, and
+watchdog behavior, but nothing is wired to a network or gamepad backend yet.
+The next milestones from the implementation plan are:
 
-1. Protocol/session core and native binding boundary.
-2. Android LAN permissions, discovery, consent, and six-character PAKE pairing.
+1. Reviewed PAKE, pairing handshake, resume MAC, and the shared JNI boundary.
+2. Android LAN permissions, discovery, consent, and six-character pairing.
 3. Custom multi-touch controller View/Canvas and the Compose layout editor.
 
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full P0/P1 gates and

@@ -1,8 +1,8 @@
 //! PadLink desktop CLI.
 //!
-//! This is the baseline command surface only. Discovery, pairing, the daemon,
-//! and gamepad backends are intentionally not implemented yet. Commands that
-//! have no implementation exit with status 2 instead of pretending to succeed.
+//! The shared protocol core exists, but discovery, pairing, the daemon, and
+//! gamepad backends are intentionally not implemented yet. Commands that have
+//! no implementation exit with status 2 instead of pretending to succeed.
 
 use std::process::ExitCode;
 
@@ -13,7 +13,7 @@ use padlink_protocol::PROTOCOL_VERSION;
 #[command(
     name = "padlink",
     version,
-    about = "PadLink desktop CLI and daemon (baseline scaffold)"
+    about = "PadLink desktop CLI and daemon (protocol core, no live session yet)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -116,11 +116,11 @@ fn main() -> ExitCode {
         Some(Command::Status(args)) => {
             if args.json {
                 println!(
-                    "{{\"state\":\"scaffold\",\"protocol_version\":{PROTOCOL_VERSION},\"implemented\":false}}"
+                    "{{\"state\":\"scaffold\",\"protocol_version\":{PROTOCOL_VERSION},\"protocol_core\":true,\"session_implemented\":false}}"
                 );
             } else {
                 println!("PadLink {}", env!("CARGO_PKG_VERSION"));
-                println!("State: scaffold (no daemon or session implemented)");
+                println!("State: scaffold (protocol core present; no daemon or live session)");
                 println!("Protocol revision: {PROTOCOL_VERSION}");
             }
             ExitCode::SUCCESS
