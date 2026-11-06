@@ -1,3 +1,18 @@
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
+
+abstract class BuildRustJniTask @Inject constructor(private val execOperations: ExecOperations) : DefaultTask() {
+    @get:InputFiles abstract val rustInputs: ConfigurableFileCollection
+    @get:Internal abstract val repositoryDirectory: DirectoryProperty
+    @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
+    @TaskAction fun build() {
+        execOperations.exec {
+            workingDir(repositoryDirectory.get().asFile)
+            commandLine("python3", repositoryDirectory.file("android-native/build_android.py").get().asFile, "--out", outputDirectory.get().asFile)
+        }
+    }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -6,6 +21,7 @@ plugins {
 android {
     namespace = "com.padlink.controller"
     compileSdk = 37
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.padlink.controller"
@@ -13,6 +29,7 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -45,6 +62,7 @@ android {
     }
 
     packaging {
+        jniLibs { useLegacyPackaging = false }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
@@ -56,10 +74,23 @@ android {
     }
 }
 
+val buildRustJni = tasks.register<BuildRustJniTask>("buildRustJni") {
+    val repositoryRoot = rootProject.projectDir.parentFile
+    val destination = layout.buildDirectory.dir("generated/rustJni")
+    repositoryDirectory.set(repositoryRoot)
+    rustInputs.from(fileTree(repositoryRoot.resolve("protocol/src")), fileTree(repositoryRoot.resolve("android-native/src")))
+    rustInputs.from(repositoryRoot.resolve("Cargo.toml"), repositoryRoot.resolve("Cargo.lock"), repositoryRoot.resolve("protocol/Cargo.toml"), repositoryRoot.resolve("android-native/Cargo.toml"), repositoryRoot.resolve("android-native/build_android.py"))
+    outputDirectory.set(destination)
+}
+androidComponents.onVariants { variant ->
+    variant.sources.jniLibs?.addGeneratedSourceDirectory(buildRustJni, BuildRustJniTask::outputDirectory)
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     implementation(platform(libs.androidx.compose.bom))

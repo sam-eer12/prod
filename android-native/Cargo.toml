@@ -1,0 +1,17 @@
+[package]
+name = "padlink-android"
+description = "Bounded JNI boundary around the shared PadLink protocol core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "padlink_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni.workspace = true
+padlink-protocol.workspace = true
+zeroize.workspace = true
