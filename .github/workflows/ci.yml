@@ -66,8 +66,13 @@ jobs:
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
+      - name: Install Rust and Android targets
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android, armv7-linux-androideabi, i686-linux-android, x86_64-linux-android
       - name: Install the project's Android platform and build tools
-        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "ndk;28.2.13676358"
       - name: Run unit tests, lint, and build debug/release APKs
         run: >-
           ./gradlew --no-daemon --stacktrace
@@ -112,8 +117,13 @@ jobs:
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
+      - name: Install Rust and Android targets
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android, armv7-linux-androideabi, i686-linux-android, x86_64-linux-android
       - name: Install the project's Android platform and build tools
-        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "ndk;28.2.13676358"
       - name: Enable hardware acceleration for the emulator
         run: |
           sudo chgrp "$(id -gn)" /dev/kvm
