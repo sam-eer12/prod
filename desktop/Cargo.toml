@@ -13,4 +13,6 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+crossterm.workspace = true
 padlink-protocol.workspace = true
+zeroize.workspace = true

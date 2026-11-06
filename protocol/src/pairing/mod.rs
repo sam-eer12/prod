@@ -7,6 +7,7 @@
 
 mod handshake;
 pub mod host;
+pub mod net;
 mod pake;
 mod random;
 pub mod resume;

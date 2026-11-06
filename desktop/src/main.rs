@@ -1,13 +1,17 @@
 //! PadLink desktop CLI.
 //!
-//! The shared protocol core exists, but discovery, pairing, the daemon, and
-//! gamepad backends are intentionally not implemented yet. Commands that have
+//! Pairing verification uses the shared core. Discovery, the daemon, and
+//! gamepad backends remain future work. Commands that have
 //! no implementation exit with status 2 instead of pretending to succeed.
 
 use std::process::ExitCode;
 
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use padlink_protocol::PROTOCOL_VERSION;
+mod pair;
+#[global_allocator]
+static HEAP: padlink_protocol::memory::BudgetedAllocator<std::alloc::System> =
+    padlink_protocol::memory::BudgetedAllocator::new(std::alloc::System, 4_000_000);
 
 #[derive(Debug, Parser)]
 #[command(
@@ -22,6 +26,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Verify phone pairing and encrypted TCP, then close the connection.
+    Pair(PairArgs),
     /// Discover phones advertising the PadLink pairing service.
     Scan(ScanArgs),
     /// Pair with a phone and open a controller session.
@@ -42,6 +48,15 @@ enum Command {
         #[command(subcommand)]
         action: AutostartAction,
     },
+}
+
+#[derive(Debug, Args)]
+struct PairArgs {
+    /// Phone address shown by the app, for example 192.168.1.20:41337.
+    endpoint: std::net::SocketAddr,
+    /// Unverified desktop name displayed in the phone's Allow/Deny prompt.
+    #[arg(long, default_value = "PadLink desktop")]
+    name: String,
 }
 
 #[derive(Debug, Args)]
@@ -115,8 +130,10 @@ fn main() -> ExitCode {
         }
         Some(Command::Status(args)) => {
             if args.json {
+                let memory = HEAP.metrics();
                 println!(
-                    "{{\"state\":\"scaffold\",\"protocol_version\":{PROTOCOL_VERSION},\"protocol_core\":true,\"session_implemented\":false}}"
+                    "{{\"state\":\"scaffold\",\"protocol_version\":{PROTOCOL_VERSION},\"protocol_core\":true,\"pairing_check_implemented\":true,\"session_implemented\":false,\"rust_heap_bytes\":{},\"rust_heap_peak_bytes\":{},\"rust_heap_limit_bytes\":{}}}",
+                    memory.used, memory.peak, memory.limit
                 );
             } else {
                 println!("PadLink {}", env!("CARGO_PKG_VERSION"));
@@ -125,6 +142,13 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        Some(Command::Pair(args)) => match pair::run(args.endpoint, &args.name) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("padlink: {error}");
+                ExitCode::from(2)
+            }
+        },
         Some(command) => {
             eprintln!(
                 "padlink: `{}` is not implemented in this baseline scaffold.",
@@ -138,6 +162,7 @@ fn main() -> ExitCode {
 impl Command {
     fn name(&self) -> &'static str {
         match self {
+            Self::Pair(_) => "pair",
             Self::Scan(_) => "scan",
             Self::Connect(_) => "connect",
             Self::Disconnect => "disconnect",
