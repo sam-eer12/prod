@@ -1,4 +1,6 @@
-//! Pinned SPAKE2 pairing core, without sockets or an Android consent UI.
+//! Pinned SPAKE2 pairing, nonblocking framing, and phone admission/consent core.
+//! Shared socket adapters, memory-only expiry and authenticated resumption are
+//! used by the Android JNI bridge and desktop pairing verification command.
 //!
 //! Suite 1 uses pakery's RFC 9382 P-256 suite, conformance-tested against
 //! Appendix B. The dependencies are not independently audited. This module

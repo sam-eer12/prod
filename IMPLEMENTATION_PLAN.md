@@ -10,7 +10,7 @@
 
 ## 1. High-Level System Architecture
 
-**Validated as a design review on 2026-11-05; implementation and hardware validation are still outstanding.** The repository contains this document, [PRD.md](PRD.md), and the user-supplied controller layout reference. Application/build directories below are proposed. PRD gates G1–G5 and the original six-character pairing workflow remain requirements.
+**Design reviewed on 2026-11-05; shared protocol/pairing and the app/CLI verification flow implemented on 2026-11-06.** The repository now contains Rust protocol, desktop CLI and Android/JNI projects. The architecture below includes future daemon/gameplay components; hardware validation and PRD gates G1–G5 remain requirements.
 
 ```mermaid
 flowchart TB
@@ -403,19 +403,24 @@ The desktop CLI/backend must be downloadable through **curl and Homebrew**, with
 
 ### Implementation status — 2026-11-06
 
-The Rust workspace and native Android/Compose shell exist. The shared core now
-implements State/Edges/control codecs, directional traffic keys and replay,
-bounded edge delivery with one backend report per transition, conservative
-freshness and watchdog rules, and an in-memory six-character SPAKE2 pairing
-handshake. Suite 1 pins pakery 0.6.2's P-256 implementation and matches RFC 9382
-Appendix B vectors; it is not independently audited.
+The shared Rust core implements codecs, directional keys/replay, fixed 32-entry
+edge storage, sample freshness/watchdog rules, authenticated clock estimation,
+SPAKE2 pairing, bounded TCP framing/adapters, consent/admission limits,
+30-second memory-only leases and two-second authenticated endpoint/epoch
+resumption. The selected pakery 0.6.2 P-256 suite matches RFC 9382 Appendix B;
+conformance testing does not replace independent security review.
 
-The Phase 1 checkboxes below remain open where they include unfinished work:
-JNI/ABI validation, transport framing/integration, request rate limiting,
-resume/migration, resource accounting, and failure cleanup. Real phone consent
-and token UI, sockets, discovery, daemon/IPC, and gamepad backends are absent.
-User pairing and live input remain unavailable; G1–G5 are not closed by these
-core tests. See `protocol/SPEC.md` for the implemented wire contract.
+The Android app now listens on Wi-Fi, shows the actual endpoint and Allow/Deny,
+issues a token/countdown, and clears state on stop/background/network change.
+Its checked JNI bridge packages the same core for all four ABIs with 16 KiB ELF
+alignment. `padlink pair ENDPOINT` uses hidden code entry, retries, and an
+encrypted Ping/Pong, then closes. Session/resume ownership is exposed through
+Rust and Kotlin; automatic transport migration/gameplay are future integration.
+Rust heap budgets and metrics are implemented, but aggregate RSS containment
+and pressure/backend cleanup remain open. Local Android instrumentation covers
+API 36 ARM64; Android 17 permission revocation and all-ABI physical/runtime
+coverage are not inferred. Discovery, daemon/IPC and gamepad backends are absent.
+See `protocol/SPEC.md` for the implemented wire contract.
 
 Phases are ordered by dependency and risk. Every PRD P0 requirement needs implementation and evidence; optional modes do not close a failed native-compatibility or hard-memory gate.
 
@@ -434,16 +439,19 @@ Phases are ordered by dependency and risk. Every PRD P0 requirement needs implem
 
 ### Phase 1: Protocol, Session State, and Bounded Core
 
-- [ ] Initialize the Cargo Rust workspace and an Android Studio Kotlin project with Gradle Wrapper/Kotlin DSL, Compose support, SDK/NDK configuration, and the UniFFI/JNI native binding harness. Define `protocol/SPEC.md` with exact State/Edges/Ack/control/TCP schemas, limits, axis conventions, key schedule, confirmation, and versioning.
+- [x] Initialize the Cargo Rust workspace and Android Studio Kotlin project with Gradle Wrapper/Kotlin DSL, Compose, pinned SDK/NDK, checked JNI binding harness and four-ABI packaging. Define `protocol/SPEC.md` with exact frame schemas, bounds, axes, key schedule and confirmation/versioning.
 - [ ] Implement 56-byte State encoding and bounded variable control frames; shared golden vectors, parser fuzzing, invalid lengths, reserved fields, and overflow cases.
-- [ ] Implement six-character consent-bound PAKE, attempt/expiry limits, mutual confirmation, directional/transport/epoch keys and 96-bit nonce construction.
-- [ ] Implement edge journal, contiguous acknowledgments/retries, latest analog snapshot, authenticated clock-offset bounds and sample-age rejection, timeout neutral latch, authenticated migration, epoch rearm, and 30 s secret expiry.
-- [ ] Implement bounded queues, fallible growth, heap accounting and aggregate memory metrics/pressure callbacks; verify failure cleanup separately from allocator abort.
+- [x] Implement six-character consent-bound PAKE, attempt/expiry limits, mutual confirmation, directional/transport/epoch keys and 96-bit nonce construction.
+- [x] Implement fixed edge journal/reordering and contiguous acknowledgments, input assembler, authenticated Ping/Pong clock bounds, freshness/watchdog primitives, authenticated resume with new-key neutral epoch, and 30 s secret lease. Validate through shared Rust and JNI tests.
+- [ ] Integrate these input primitives with the gameplay sender/receiver loops, edge retry-age checks, backend reports and lifecycle drivers in Phase 3.
+- [x] Implement fixed transport/edge storage, fallible wire-batch growth and checked heap accounting with reservation/rollback, reallocation and concurrency tests.
+- [ ] Implement aggregate memory metrics/pressure callbacks and verify OS/backend failure cleanup separately from allocator abort; validate every ABI at runtime and add coverage-guided parser fuzzing.
 
 **Exit:** protocol interoperability and safety tests pass without a real game backend. Unknown protocol/suite and compromised framing fail closed.
 
 ### Phase 2: Reachable CLI-to-Phone Vertical Slice
 
+- [x] Implement foreground Android listener, consent/token/countdown UI, bounded socket adapters and the `padlink pair` verification command with hidden token entry/cancel, wrong-code retries and encrypted round trip.
 - [ ] Build the Kotlin/Jetpack Compose listening, device-status, consent and token screens, with actual target-SDK permission handling including Android 17 LAN permission grant/deny/revoke.
 - [ ] Implement per-user daemon lifecycle/IPC and singleton protections; CLI discovery/selection/hidden token entry/cancel/status.
 - [ ] Implement `_padlink._tcp` mDNS, bounded IPv4 fallback, explicit subnet probe, actual endpoint display, scoped IPv6/manual connect, interface selection, and network-change callbacks.

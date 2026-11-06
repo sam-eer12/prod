@@ -1,12 +1,13 @@
 # PadLink Protocol Specification
 
-**Status:** draft wire/pairing core, revision 1. Frame codecs, key schedule,
-replay, edge recovery, freshness, watchdog, and in-memory SPAKE2 pairing state
-machines are implemented and tested. Suite 1 is pinned and conformance-tested,
-**not independently audited**. Pairing transport, Android consent/token UI,
-request rate limits, resume MAC, discovery, sockets, daemon/IPC, and native
-backends are **not implemented**. User pairing remains unavailable. The current
-build is **not safe for live input** and makes no resource or gameplay claim.
+**Status:** draft revision 1. Shared codecs, key schedule, replay, edge recovery,
+clock bounds, watchdog, SPAKE2 pairing, bounded TCP adapters, admission/consent,
+session expiry and authenticated resumption are implemented. Android JNI and
+the real consent/token UI use the same core as `padlink pair`. Suite 1 is pinned
+and RFC-conformance-tested, **not independently audited**. Discovery, daemon/IPC,
+automatic transport migration and native gamepad backends remain future work.
+Pairing verification is available; live input and release compatibility remain
+unvalidated.
 
 Every rule below is fail-closed: a receiver that cannot establish a requirement
 must reject the packet, remain neutral, and avoid advancing session state.
@@ -25,7 +26,12 @@ must reject the packet, remain neutral, and avoid advancing session state.
 | State rate | 120 Hz default; 60–240 Hz negotiated |
 | Max encrypted frame | 256 bytes |
 | Max encrypted payload | 228 bytes |
-| Max pre-auth handshake frame | 4096 bytes |
+| Max authenticated TCP frame | 258 bytes including its two-byte prefix |
+| Max pre-auth handshake frame | 4096 bytes including its two-byte prefix |
+| Pairing socket arrivals | 5 per rolling 60 s globally and per source IP |
+| Pending pairing connections | 1; no concurrent admission while paired |
+| First Request / frame progress / queued write deadline | 3 s, absolute |
+| Unanswered Allow/Deny prompt | 30 s |
 | Default neutral hold | 250 ms (configurable 100–250 ms) |
 | Reconnecting display | 5 s after newest fresh sample |
 | Session expiry | 30 s after newest fresh sample |
@@ -36,7 +42,7 @@ Only a completed PAKE with mutual confirmation may create a session.
 
 ## 2. Encoding conventions
 
-- Integers are little-endian.
+- Payload/header integers are little-endian; TCP length prefixes are big-endian.
 - `u64` counters are unsigned and never wrap.
 - Frames have a 12-byte clear header, a bounded encrypted payload, and a
   16-byte Poly1305 tag. The header is AEAD associated data.
@@ -62,7 +68,7 @@ offset  size  field
 | Version | `1`; reject every other nibble |
 | `session_tag` | First two bytes of the 128-bit session ID, LE; not an authenticator |
 | `seq_num` | Starts at `0` for each distinct key; never reset under the same key |
-| AAD | The complete 12-byte clear header |
+| AAD | UDP: the 12-byte clear header; TCP: its BE length prefix followed by the header |
 | Replay check | Only after successful AEAD verification and payload validation |
 | Rekey threshold | Before `2^48`; refuse to seal at or above it |
 
@@ -76,6 +82,23 @@ nonce[4..12] = seq_num as u64 little-endian
 That is a 96-bit ChaCha20-Poly1305 nonce. All packet types sharing a key share
 one counter. A counter is never reused after a retry, reconnect, backend switch,
 or transport change.
+
+### 3.1 Authenticated TCP framing
+
+TCP carries `body_length:u16 BE || header || ciphertext || tag`. The body length
+excludes the prefix, ranges from 28 to 256 bytes, and must exactly equal the
+received body's length. The complete TCP frame is therefore 30–258 bytes.
+AEAD AAD is `prefix[2] || header[12]`. Altering a prefix, stripping it, or adding
+one to a header-only envelope cannot authenticate. Invalid framing or tags do
+not consume replay state. This finalizes the previously unintegrated draft TCP
+wire contract; revision 1 UDP envelopes and their golden vector are unchanged.
+
+`TrafficKey::seal_tcp_frame/open_tcp_frame` require a TCP key domain and use this
+complete representation. `PairedSession::seal/open(Transport::Tcp, ...)` and the
+pairing ready frame also include the authenticated prefix. UDP session calls
+continue to return/consume the unprefixed envelope. Never seal a frame again for
+a partial-write retry: retain its exact bytes and counter in the single write
+slot until completion or connection cancellation.
 
 ## 4. Frame types
 
@@ -175,20 +198,51 @@ acknowledgment does not prove that a game's polling loop observed an edge.
 Ping/Pong establish clock-offset bounds. They do **not** refresh input
 freshness. Rumble is capped so a missing stop packet cannot vibrate forever.
 
-### 4.5 Resume handshake status
+### 4.5 Authenticated resumption
 
-The frame schemas above are frozen, but the resume key/MAC and endpoint
-challenge flow are not implemented. Until they are:
+`SessionLease::resume` moves the session into one isolated candidate, whose
+deadline is `min(now + 2 s, original secret expiry)`. Input must be neutralized
+before entry. The transport supplies both observed SocketAddr endpoints and
+rejects ordinary traffic while the candidate is pending. A wrong source is
+rejected before opening and does not consume the legitimate challenge; invalid
+authenticated state, proof, or deadline erases the candidate and session.
 
-- no resume frame may rearm a controller;
-- a transport or endpoint change requires a fresh epoch and neutral baseline;
-- after 30 s, or after either process restarts, a new six-character pairing is
-  required.
+1. Desktop sends old-key encrypted ResumeChallenge A for `old_epoch + 1`.
+2. Phone replies with old-key encrypted ResumeChallenge B for the same epoch.
+3. Desktop sends old-key encrypted ResumeConfirm with echo B and desktop MAC.
+4. Phone verifies it, sends its old-key ResumeConfirm with echo A and phone MAC,
+   followed by new-key EpochConfirm (neutral baseline, sequence 0).
+5. Phone commits only after both replies are fully written. Desktop commits
+   only after phone proof and the exact new-key ready authenticate. `finish`
+   exposes the new epoch and endpoint together. The expiry deadline is preserved.
 
-The planned MAC is HMAC-SHA256 over a transcript binding the session ID, old and
-new epochs, transport, role, and both 128-bit challenges, under a key derived
-from the session root with the label `padlink/v1/resume-confirm`. The transcript
-must not rely on a short session tag or source address.
+The canonical transcript is concatenated without implicit text encodings:
+
+```text
+"padlink/v1/resume-transcript" || session_id[16] || old_epoch_le32 || new_epoch_le32
+|| transport_u8 || desktop_endpoint || phone_endpoint || A[16] || B[16]
+endpoint = family_u8(4 or 6) || ip_octets[4 or 16] || port_le16
+```
+
+IPv6 flow/scope IDs remain in local socket routing and source matching; they
+are excluded from the shared transcript because peer interface indices differ.
+Ports must be nonzero and addresses must not be unspecified.
+
+```text
+mac_key = HKDF-SHA256(old_root, salt=session_id,
+                      info="padlink/v1/resume-mac", length=32)
+MAC = HMAC-SHA256(mac_key, role_u8 || transcript)
+role = 1 desktop; 2 phone (separate from traffic direction codes)
+new_root = HKDF-SHA256(old_root, salt=SHA256(transcript),
+                       info="padlink/v1/resume-root", length=32)
+```
+
+All four traffic keys derive from the new root and epoch using §5. Counters and
+replay windows restart under these new keys; old packets cannot authenticate.
+Resume frames, neutral ready and pings cannot refresh the 30-second secret
+lease. Process restart or expiry requires fresh phone consent and a new token.
+Candidate socket acquisition, UDP retransmission scheduling, and physical
+input/backend rearm are responsibilities of the future session owner.
 
 ## 5. Session key schedule
 
@@ -235,6 +289,16 @@ Ping/Pong yields `offset_us` and an uncertainty half-width for the peers'
 monotonic clocks. The uncertainty must include measured drift and must not
 exceed 500 ms; larger uncertainty means freshness cannot be established and
 output stays neutral.
+
+`ClockSync` retains one outstanding probe and one estimate. A Pong must be
+authenticated and match its ping ID and exact timestamp. Given local send/receive
+times t1/t4 and peer receive/send times t2/t3, offset is bounded by
+`[t3-t4, t2-t1]`, without assuming symmetric one-way delay. Invalid timestamps,
+processing time beyond RTT, clock regression, a 3-second probe timeout or more
+than 500 ms uncertainty fail. The half-width includes 1000 ppm relative drift
+during the measurement and estimate age. Estimates expire after 5 seconds and
+must be discarded on endpoint/epoch changes. This drift ceiling is a model
+assumption to validate on supported hardware, not a measured device guarantee.
 
 ```text
 offset_us       = peer_clock - local_clock
@@ -288,9 +352,9 @@ A six-character token is a 30-bit password, not a 256-bit secret. Suite 1 uses
 the pinned RFC 9382 implementation below with fresh ephemeral state,
 transcript/role binding, explicit mutual confirmation, and attempt limits. No
 X25519-plus-HMAC or commit-reveal substitute is approved. The implementation is
-conformance-tested rather than independently audited. G3 remains open; user
-pairing stays blocked until the real consent UI, transport and rate limits are
-implemented and tested, and the required security/ABI validation is complete.
+conformance-tested rather than independently audited. The real UI and socket
+flow are integrated and tested. G3 remains open pending independent security
+review and the complete release device/ABI failure matrix.
 
 ### 7.1 Selected suite and password mapping
 
@@ -313,8 +377,9 @@ feature for RFC vectors.
 
 ### 7.2 Pre-authentication framing
 
-The desktop will initiate TCP to the phone's actual pairing endpoint. The
-socket implementation is still absent. The core codecs encode complete frames:
+The desktop initiates TCP to the phone's actual pairing endpoint. The shared
+socket adapters power the foreground Android listener and CLI check. The core
+codecs encode complete frames:
 
 ```text
 length: u16 BE   # counts magic + ver_type + payload, excludes the prefix
@@ -324,8 +389,10 @@ payload
 ```
 
 The total bound is 4096 bytes, **including** the two-byte prefix; the body is
-2–4094 bytes. A transport must validate the prefix before allocating/reading its
-body, use a short bounded read deadline, and reject truncation/trailing bytes.
+2–4094 bytes. `FrameReader` validates the prefix before reading any body bytes
+into its fixed buffer, and never reads beyond the current frame. Coalesced next
+frames remain in the socket. Each framer has one 4096-byte slot. Frame codecs
+reject truncation/trailing bytes within an individual frame.
 All payload integers below are LE. Pairing message nibbles are independent of
 the post-auth encrypted frame types.
 
@@ -372,7 +439,7 @@ output for handshake/session/messages redacts transcript and secret material.
 
 1. Desktop sends Request; phone displays the unverified label/address and waits
    for consent. Only Allow issues a six-character token and sends Accept.
-2. User enters the phone's token in hidden CLI input (not implemented yet).
+2. User enters the phone's token in hidden CLI input (`padlink pair`).
    Desktop sends fresh PakeA.
 3. Phone reserves an attempt and replies with fresh PakeB and `cB`.
 4. Desktop verifies `cB` and sends `cA`. Its session remains private/pending.
@@ -382,11 +449,15 @@ output for handshake/session/messages redacts transcript and secret material.
 6. Desktop releases its pairing session only after this exact ready frame
    authenticates. Wrong type/epoch/sequence/flags, tag failure, or expiry cannot
    release a desktop session. Its TCP replay window already includes ready.
+   Ready is a complete length-prefixed authenticated TCP frame (§3.1).
 
 The core returns traffic ownership; it does not mount a controller or authorize
 live input. Path probing, neutral physical touch state, permissions, backend
-readiness, and watchdog integration are additional gates. The transport must
-cancel incomplete requests and erase pending state on disconnect/timeout.
+readiness, and watchdog integration are additional gates. `PhonePairingHost`
+keeps its session private while SendingReady, then accepts `ready_written` only
+after the caller's `FrameWriter` has completed that exact frame. Disconnect or
+timeout during this write drops the pending session. The transport must close
+the socket and cancel pending state on every framing/IO/lifecycle failure.
 
 ### 7.5 Attempt ownership and expiry
 
@@ -395,28 +466,106 @@ of zero permits the third attempt to finish. `fail_attempt()` does not decrement
 again; it invalidates the token only when no attempts remain. Confirmed success,
 expiry, cancellation, replacement, or deny invalidates it immediately.
 
-Retries retain the same consented request, session ID, token, and original
-phone-side 60 s deadline, while using new PAKE ephemerals. A new valid PakeA
-abandons any unfinished previous attempt. The phone checks its deadline both
-before key-share processing and before confirmation. An expired token cannot be
-revived by a reconnect. Desktop retries discard pending PAKE/session material.
+Same-connection retries retain the consented request, session ID, token, and
+original phone-side 60 s deadline, while using new PAKE ephemerals. A new valid
+PakeA abandons an unfinished previous attempt. The phone checks its deadline
+before key-share processing and confirmation. The host bounds the wait after
+PakeB to three seconds, clipped by token expiry. A stalled exchange or connection
+loss cancels and erases the token; another socket requires a new Request and
+fresh explicit consent charged to the same request limiter. Neither reconnect
+nor listener restart revives a token or silently generates a replacement.
+Desktop retries discard pending PAKE/session material.
+
+Pre-auth Retry (type 7, common header/request ID, empty payload) lets the desktop
+abandon a failed PakeB confirmation. The phone releases the reserved attempt
+and returns to the original token deadline; no attempt or time is replenished.
+Retry is accepted only while waiting for confirmation. The third failed attempt
+cannot retry. This control is unauthenticated and grants no trust or session.
 
 Malformed local code input is rejected and counted by the local token checker.
 Malformed pre-auth wire data and invalid points are rejected before PAKE; they
 must be covered by the transport's read/connection/request limits. Invalid
-points do not consume a password-verification attempt in this core. Before
-exposing a server, enforce one pending request and phone-wide/per-source
-five-requests/minute limits; new sockets or source addresses must not reset the
-global limiter. These limits and the actual phone consent UI are not present.
+points do not consume a password-verification attempt in the handshake core;
+the host cancels their connection. `PhonePairingHost::begin_connection` charges
+socket arrivals before parsing, using the OS peer IP, never a supplied label,
+request ID, or source port. It enforces five arrivals per rolling 60 s globally
+and per source, with at most five fixed history records. IPv4-mapped IPv6 is
+canonicalized. Busy, malformed, denied, expired, and disconnected admissions are
+not refunded; source churn cannot bypass the global limit. Already rate-limited
+arrivals do not extend the window. Keep one host across listener stop/start.
 
-### 7.6 Conformance evidence and limitations
+Only one pending request exists and another cannot be admitted while paired.
+Process-local connection IDs prevent a stale UI/socket callback from allowing,
+denying, or cancelling a newer prompt. Request receipt never issues a token.
+Only `allow` on the current consent prompt calls `PhoneHandshake::consent`.
+Android keeps this owner across activity/listener restarts and calls Allow only
+from the current consent UI action.
+
+### 7.6 Nonblocking transport and timer integration
+
+`FrameReader`/`FrameWriter` work with nonblocking `Read`/`Write` sockets. Each poll
+makes at most one IO call and copies at most one bounded frame, so callers can
+interleave watchdog/cleanup work. WouldBlock and Interrupted yield Pending
+without spinning or extending deadlines. A queued write has an absolute three-
+second deadline. A read uses its caller-supplied stage deadline; the first byte
+also starts a three-second frame deadline that later bytes cannot extend. All
+deadlines use the same caller-supplied monotonic millisecond clock. Expiry at the
+exact deadline, clock regression, overflow, EOF, and fatal IO errors fail closed.
+
+The application/native adapter must:
+
+1. Retain one host, admit the OS peer IP before parsing, bound accepted sockets,
+   set nonblocking/TCP_NODELAY, and close rejected sockets without spawning work
+   or logging each flood packet.
+2. Arm the initial read with the host's three-second Request deadline. Decode
+   one complete frame, then call `receive` with its current local connection ID.
+3. Show the unverified label/address for at most 30 seconds. Monitor socket loss,
+   cancellation, permissions, and app lifecycle while waiting for Allow/Deny.
+4. Queue each reply once and rearm the reader for the next phase with the host's
+   deadline. Never replace a partial receive or an occupied write slot. Complete
+   Accept before reading PakeA, and PakeB before reading ConfirmA/a retry.
+5. Use Authenticated mode for ready and subsequent encrypted TCP frames. Call
+   `ready_written` only after the ready writer returns Complete. The desktop
+   must authenticate ready through `DesktopHandshake::finish` before session use.
+6. Poll both host and framer deadlines from timers even without socket activity.
+   Close the ID returned by `poll_deadline` before accepting its replacement.
+   Every error/EOF/permission loss/background/cancel closes the socket, clears
+   frame slots, and calls `close_connection`; retain the host's rate history.
+
+The adapters implement the phone listener and diagnostic desktop client; JNI
+uses bounded registry IDs and serialized calls/close. The core does not configure
+OS socket buffers/backlog, run a Tokio executor or daemon, or drive real input backends.
+Fixed frame slots are not evidence for the desktop aggregate 75 MB cap. Physical
+device LAN/permission/ABI tests and application event-loop starvation tests are
+still required.
+
+### 7.8 Android binding and memory lifetime
+
+See [android-native/README.md](../android-native/README.md) for the bounded JNI
+contract, operation layouts, transfer/resume lifetime and build targets.
+The app stops its listener and clears token/session state on background, Stop,
+cancel, network loss/route change or native fatal failure. Android 17 LAN
+permission is requested before listening; grant/deny/revoke needs API 37 runtime
+coverage. Tokens are excluded from saved state and screenshots/task previews.
+
+The shared `BudgetedAllocator` reserves atomically, rolls back failed allocation,
+and conservatively accounts old+new transient realloc storage. Fixed journals
+and frame slots bound retained protocol data; fallible wire-batch reservations
+propagate exhaustion. CLI/native Rust heap metrics do not include all process
+RSS, ART/JNI/OS allocations or stacks, and infallible OOM may abort. Aggregate
+pressure callbacks/OS containment and the strict product memory gate remain open.
+
+### 7.7 Conformance evidence and limitations
 
 `protocol/tests/rfc9382.rs` matches RFC 9382 Appendix B's pA, pB, Ke, cA and cB
 exactly, including `Ke=0e0672dc86f8e45565d338b0540abe69`. The deterministic
 vector also checks both peer confirmations and rejects reflected/truncated
 MACs. `pairing_flow.rs` tests the PadLink wrapper's fresh exchanges, wrong-code
 retries, third-attempt behavior, expiry, metadata/confirmation/ready tampering,
-codecs, and bidirectional encrypted traffic. This is not an audit or proof of
+codecs, and bidirectional encrypted traffic. `pairing_transport.rs` adds a real
+fragmented loopback exchange with wrong-code retry, mid-frame socket loss,
+absolute IO/stage deadlines, admission limits/source churn, stale callbacks,
+denial/expiry/ready-write cleanup, and TCP prefix tampering. This is not an audit or proof of
 transport security, Android interoperability, live-input safety, resource
 containment, or gameplay compatibility.
 
@@ -476,13 +625,18 @@ ChaCha20-Poly1305/HKDF implementation.
 - snapshot/edge cursor semantics;
 - clock offset, uncertainty, future samples, and stale samples;
 - 250 ms neutral, 5 s reconnect, 30 s expiry, rearm, and explicit neutralization.
-- RFC 9382 Appendix B and the pairing/ready failure cases in §7.6;
+- RFC 9382 Appendix B and the pairing/ready failure cases in §7.7;
+- fixed-buffer fragmented/coalesced IO, single-call poll budgets, slow-drip/stall
+  deadlines, EOF/errors/clock failures, and authenticated TCP length prefixes;
+- phone-wide/per-source rolling request limits, busy/denied/malformed arrivals,
+  stale callbacks, explicit consent, retry budgets, and ready-write cleanup;
+- real loopback TCP pairing, wrong-code retry, and mid-frame connection loss;
 - packet/timer races, expiry-preserving rearm, atomic rejected edge batches,
   replay preservation on malformed authenticated payloads, and separate reports
   for recovered press/release transitions.
 
 Still required before live-input use: security and Android ABI validation,
-pairing transport and consent UI, request rate limits, resume handshake,
-authenticated path probes, streaming TCP transport framing,
+application pairing transport and consent UI, resume handshake,
+authenticated path probes, streaming TCP freshness/backpressure integration,
 daemon/IPC ownership, native backends, and the failure-injection matrix in
 `IMPLEMENTATION_PLAN.md`.

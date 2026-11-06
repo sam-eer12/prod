@@ -4,17 +4,18 @@
 //!
 //! - six-character pairing-code shape, generation, and attempt limits;
 //! - pinned RFC 9382 SPAKE2 pairing codecs and mutual-confirmation state machines;
+//! - fixed-buffer nonblocking TCP framing and phone-wide consent/admission ownership;
 //! - exact State/Edges/Ack/control frame layouts;
 //! - HKDF traffic-key derivation and ChaCha20-Poly1305 envelopes;
 //! - per-key replay windows and sequence limits;
 //! - the bounded digital-edge journal and receiver reordering;
 //! - conservative clock bounds, input freshness, and the input watchdog.
 //!
-//! It deliberately does **not** implement pairing sockets, phone consent UI,
-//! discovery, native gamepad backends, or a daemon. The selected PAKE dependency
-//! is pinned and RFC-vector-tested, not independently audited. User pairing
-//! remains blocked until the real consent, bounded transport, and rate limits
-//! exist. This build is not safe for live input.
+//! Nonblocking socket adapters power Android JNI and the CLI pairing check.
+//! Authenticated endpoint/epoch resumption and memory-only session leases are
+//! shared too. Discovery, native gamepad backends, and the daemon remain future
+//! work. The PAKE dependency is pinned and RFC-vector-tested, not independently
+//! audited. This build does not authorize live controller input.
 //!
 //! See `protocol/SPEC.md` for the normative wire contract.
 

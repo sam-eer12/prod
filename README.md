@@ -1,13 +1,13 @@
 # PadLink
 
 PadLink turns an Android phone into a low-latency gamepad for a desktop on the
-same local network. This repository is at the **foundation** stage: the Android
-app builds and runs, the desktop CLI has its baseline command surface, and the
-shared Rust protocol core defines framing, key derivation, replay protection,
-lost-edge recovery, freshness, and watchdog behavior. An in-memory six-character
-SPAKE2 pairing core is implemented and tested. Discovery, pairing sockets,
-Android consent/token UI, controller input, and gamepad backends are not
-implemented yet. **The current build is not safe for live input.**
+same local network. The shared protocol and pairing core now powers a real
+Android listening/consent/token flow and the desktop `padlink pair` check.
+Both use the same Rust SPAKE2 handshake, bounded TCP adapters, traffic keys,
+replay protection, and memory-only session lifetime. Authenticated endpoint
+resumption rotates keys and epochs and is exposed through Rust and Android JNI.
+Discovery, daemon/IPC, controller input, and native gamepad backends remain future
+work. **Pairing verification does not open a playable controller session.**
 
 The product requirements and engineering plan live in
 [PRD.md](PRD.md) and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). The
@@ -17,10 +17,11 @@ original product prompt is preserved at the top of the PRD.
 
 | Area | Status |
 | :--- | :--- |
-| Android app (native Kotlin) | Buildable debug/release APKs, Material 3 Compose shell, dark controller-inspired theme, settings and build-info screens |
-| Android tests | JVM unit tests for the pairing-code shape rules; one Compose launch test (requires a device/emulator) |
-| Desktop CLI | Rust 2024 / Cargo workspace, `clap` command surface, honest `not implemented` exits for unfinished commands |
-| Shared protocol crate | State/Edges/control and pre-auth codecs, pinned SPAKE2 pairing state machines with mutual confirmation, HKDF traffic keys, AEAD/replay, bounded edge recovery with distinct reports, conservative freshness, and watchdog; no transport/UI integration yet |
+| Android app (native Kotlin) | Wi-Fi listening, actual endpoint display, Allow/Deny, six-character token/countdown, cancellation, disconnect and lifecycle cleanup |
+| Android tests | JVM rules, Compose launch/consent/backgrounding, real JNI socket pairing/retry/encrypted exchange and authenticated resume |
+| Desktop CLI | `pair ENDPOINT --name LABEL` with hidden terminal input; protocol and heap status; explicit errors for unfinished commands |
+| Shared protocol crate | Exact codecs, RFC-vector-tested SPAKE2, bounded TCP adapters, admission/consent, AEAD/replay, fixed edge storage, clock bounds, watchdog, authenticated resume and session expiry |
+| Android native crate | Checked JNI handles; the same Rust core packaged for arm64-v8a, armeabi-v7a, x86 and x86_64 with 16 KiB ELF alignment |
 | Documentation | PRD, implementation plan, controller layout reference, protocol specification |
 
 Android Studio is the build/debug IDE. The installed app runs on Android's ART
@@ -53,6 +54,7 @@ runtime; the desktop tool is a separate native Rust binary.
 ├── desktop/                        # Rust CLI crate (`padlink` binary)
 │   ├── Cargo.toml
 │   └── src/main.rs
+├── android-native/                 # Checked JNI boundary and four-ABI NDK build
 ├── protocol/                       # Shared protocol crate + draft specification
 │   ├── Cargo.toml
 │   ├── SPEC.md
@@ -74,6 +76,7 @@ runtime; the desktop tool is a separate native Rust binary.
 | Compose BOM | 2025.09.00 |
 | Android compile / target SDK | 37 |
 | Android min SDK | 28 |
+| Android NDK | 28.2.13676358 |
 | Java for Gradle | 17+ |
 | Rust | stable, edition 2024 (1.88+) |
 
@@ -82,8 +85,12 @@ and [Cargo.toml](Cargo.toml). Update them together and re-run the builds.
 
 ## Build and run the Android app
 
-1. Install Android SDK Platform 37 and Build Tools 36.x through Android Studio's
-   SDK Manager.
+1. Install Android SDK Platform 37, Build Tools 36.x and NDK 28.2.13676358 through
+   Android Studio's SDK Manager. Install Rust and Python 3, then add native targets:
+
+   ```sh
+   rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+   ```
 2. Open the `android/` directory in Android Studio. Do not open the repository
    root; the Gradle project root is `android/`.
 3. Let Gradle sync finish, select the `app` run configuration, pick a device or
@@ -111,13 +118,19 @@ Other useful tasks:
 ./gradlew :app:compileDebugAndroidTestKotlin
 ```
 
-Android Studio creates `android/local.properties` with your SDK path. That file
+Gradle builds and packages all four Rust ABIs automatically. Android Studio
+creates `android/local.properties` with your SDK path. That file
 is intentionally ignored by Git. Release signing is not configured yet; the
 release task produces an unsigned APK.
 
 ### Current app behavior
 
-- Home screen: product scaffold state, connection status card, and settings.
+- Home screen: Start listening on Wi-Fi, the actual bound endpoint, an unverified
+  desktop name/address with Allow/Deny, then a token with a 60-second countdown.
+- Android 17 requests LAN permission before starting. Backgrounding, Stop,
+  network loss/address change, or cancellation closes the channel and clears
+  token/session material. Listener restart keeps phone-wide request limits.
+- Pairing tokens are excluded from screenshots/task previews and saved UI state.
 - Settings: app version, build type, package name, and the current controller
   status. Nothing sends gamepad input.
 - Debug builds use the application ID `com.padlink.controller.debug` so they can
@@ -130,6 +143,7 @@ cargo build --workspace
 cargo run -p padlink-cli -- --help
 cargo run -p padlink-cli -- status
 cargo run -p padlink-cli -- status --json
+cargo run -p padlink-cli -- pair 192.168.1.20:41337 --name "My desktop"
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
@@ -137,8 +151,13 @@ cargo clippy --workspace --all-targets -- -D warnings
 `status` reports the scaffold state and protocol revision. Commands such as
 `scan`, `connect`, `disconnect`, `doctor`, `daemon`, and `autostart` parse their
 arguments but exit with status `2` and an explicit "not implemented" message.
-They do not print success or fake session data. The CLI does not yet use the
-protocol core.
+`pair` uses the shared core: start listening in the Android app, copy its actual
+endpoint, run this command in a terminal, tap Allow, and enter the six-character
+token. Entry is hidden; Escape/Ctrl-C cancels. Up to three attempts share the
+original token deadline. The command verifies an encrypted Ping/Pong and clock
+bounds, reports success, and closes. It does not retain trust on disk or create
+a gamepad. IPv6 endpoints use brackets and numeric link-local scope IDs, for
+example `'[fe80::1234%3]:41337'` (the scope is local to the desktop interface).
 
 Protocol-core checks:
 
@@ -153,27 +172,64 @@ freshness rules, watchdog timings, and the golden State vector. The core is
 `0.6.2` using RFC 9382's P-256 suite. Tests match Appendix B's two public shares,
 session key, and both HMAC confirmations exactly. This is conformance evidence,
 **not an independent security audit**. A release still requires security review,
-Android ABI validation, transport/consent integration, rate limiting, and the P0
-failure tests.
+physical-device/ABI coverage and the remaining P0 failure tests.
 
 The phone issues a token only through the explicit core consent step. The
 desktop cannot extract a session until it verifies the phone's confirmation and
 an encrypted neutral-ready frame; the phone cannot extract one until the
-desktop's confirmation verifies. No CLI command or Android screen invokes this
-flow yet. `protocol/tests/pairing_flow.rs` exercises it entirely in memory.
+desktop's confirmation verifies. The Android screen and `padlink pair` invoke
+this flow. `protocol/tests/pairing_flow.rs` exercises it in memory;
+`protocol/tests/pairing_transport.rs` also runs the handshake and a wrong-code
+retry through fragmented real loopback TCP reads/writes.
+
+The shared `PhonePairingHost` admits at most five socket arrivals per rolling
+minute globally and per source IP, before parsing. Busy, denied, malformed,
+expired, and cancelled requests keep their admission charge. It owns one
+pending request, requires an explicit Allow action, and retains the token's
+original deadline/attempt budget during same-connection retries. Disconnect
+erases the token and requires fresh consent. A phone session remains private
+until the authenticated ready frame is fully written.
+
+`FrameReader` and `FrameWriter` each have one fixed 4,096-byte slot. Each poll
+performs at most one nonblocking I/O call. Prefix validation precedes body reads;
+partial frames and queued writes have absolute three-second progress deadlines
+that trickled bytes cannot extend. Caller-driven timers, socket cleanup, OS
+buffer limits and future daemon/backend integration still need release validation.
+Socket tests require an environment that allows local TCP sockets.
+
+`SessionLease` expires 30 seconds after pairing or the newest validated fresh
+input sample. Ping, retry, and resume never extend it. `Resumption` holds one
+candidate for at most two seconds, binds both endpoints/challenges and roles,
+rotates the root and four traffic keys, and requires a new-key neutral ready
+before commit. Rust adapters can transfer ownership with `detach_session`;
+Android exposes the same operations through `NativeSession`. Candidate socket
+selection, retransmission scheduling and gameplay rearm belong to the future
+transport/session owner; automatic network resume is not enabled in this UI.
+
+The desktop allocator accounts Rust heap use with a 4,000,000-byte last-resort
+limit; Android native Rust uses 24,000,000 bytes. `status --json` and JNI operation
+90 expose heap metrics. These counters exclude OS/native/Java allocations and
+thread stacks, and are not aggregate RSS containment. Infallible OOM may abort;
+the product's aggregate 75 MB gate remains open.
 
 ## Continuous integration
+
+Local validation on 2026-11-06: 156 Rust tests, four Android JVM tests and four
+instrumentation tests on an API 36 ARM64 emulator passed. Debug/unsigned release
+builds, lint, Clippy and formatting passed. Both APKs contain four native ABIs
+with verified 16 KiB ELF/load alignment. A real CLI pseudo-terminal check covered
+wrong-code retry, hidden entry, encrypted verification and socket cleanup.
 
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs on pushes to `main`,
 pull requests targeting `main`, and manual runs from GitHub's Actions tab.
 
 - **Rust:** formatting on Linux, plus Clippy and workspace/documentation tests
   on Linux, macOS, and Windows. Dependency resolution uses `Cargo.lock`.
-- **Android:** Java 17, the checked-in Gradle wrapper, Android SDK 37, unit
+- **Android:** Java 17, Rust Android targets, NDK 28.2.13676358, the Gradle wrapper, Android SDK 37, unit
   tests, lint, debug and unsigned release builds, and instrumentation-test
   compilation.
-- **Android emulator:** executes the Compose launch test on an API 35 emulator.
-  This is a UI smoke test; Wi-Fi, Bluetooth, touch latency, and gamepad backend
+- **Android emulator:** executes Compose and JNI pairing/resume tests on API 35.
+  Physical Wi-Fi, Bluetooth, touch latency, and gamepad backend
   compatibility still require the physical-device tests in the plan.
 
 The pipeline uploads test/lint reports and the debug APK as seven-day workflow
@@ -183,16 +239,16 @@ require release-signing secrets.
 
 ## Scope note
 
-The pinned PAKE has no weaker authentication fallback. Pairing remains
-unavailable to users until the real phone consent flow, bounded transport, and
-global/per-source request limits are implemented and tested. Do not use this
-build to transmit real input. Nothing is wired to a network or gamepad backend,
-and no measured memory ceiling or gameplay compatibility is claimed.
+The pinned PAKE has no weaker authentication fallback. The app and CLI can
+verify pairing now; live gameplay and automatic transport migration are not
+enabled. No aggregate memory ceiling or game compatibility is claimed. Local
+instrumentation was exercised on an API 36 ARM64 emulator; Android 17 LAN
+grant/deny/revoke and every packaged ABI still require runtime device coverage.
 The next milestones from the implementation plan are:
 
-1. Bounded pairing TCP transport, rate limits, and Android consent/token UI.
-2. Security/ABI validation, resume MAC, shared JNI boundary, LAN permissions,
-   discovery, and desktop daemon/IPC.
+1. Desktop daemon/IPC and bounded discovery.
+2. Authenticated UDP path setup/TCP fallback and automatic resume integration,
+   Android 17 permission tests, physical-device validation and security review.
 3. Custom multi-touch controller View/Canvas and the Compose layout editor.
 
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full P0/P1 gates and
