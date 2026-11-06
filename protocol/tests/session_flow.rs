@@ -36,7 +36,7 @@ fn short_tap_survives_transport_and_drives_the_watchdog() {
     // Press and release both happen between regular state ticks.
     journal.push(Buttons::A, ms(100)).unwrap();
     journal.push(Buttons::neutral(), ms(110)).unwrap();
-    let edges = Frame::Edges(journal.pending_batch(12).unwrap());
+    let edges = Frame::Edges(journal.pending_batch(12).unwrap().unwrap());
     let state = Frame::State(StatePayload {
         latest_edge_id: 2,
         sample_time_us: ms(110),

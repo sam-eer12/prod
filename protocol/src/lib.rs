@@ -25,6 +25,7 @@ pub mod edge;
 pub mod error;
 pub mod frame;
 pub mod input;
+pub mod memory;
 pub mod pairing;
 pub mod watchdog;
 

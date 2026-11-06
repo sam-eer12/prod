@@ -6,8 +6,6 @@
 //! apply only the contiguous prefix so a missing transition can never be
 //! silently skipped.
 
-use std::collections::{BTreeMap, VecDeque};
-
 use crate::error::ProtocolError;
 use crate::frame::{Buttons, Edge, EdgesPayload, MAX_EDGES_PER_FRAME};
 
@@ -18,7 +16,9 @@ pub const MAX_EDGE_JOURNAL: usize = 32;
 #[derive(Debug, Clone)]
 pub struct EdgeJournal {
     capacity: usize,
-    entries: VecDeque<Edge>,
+    entries: [Option<Edge>; MAX_EDGE_JOURNAL],
+    head: usize,
+    length: usize,
     next_edge_id: u64,
     highest_issued: u64,
     acknowledged: u64,
@@ -35,7 +35,9 @@ impl EdgeJournal {
         let capacity = capacity.clamp(1, MAX_EDGE_JOURNAL);
         Self {
             capacity,
-            entries: VecDeque::with_capacity(capacity),
+            entries: [None; MAX_EDGE_JOURNAL],
+            head: 0,
+            length: 0,
             next_edge_id: 1,
             highest_issued: 0,
             acknowledged: 0,
@@ -44,7 +46,7 @@ impl EdgeJournal {
 
     /// Records one button-bitmap transition.
     pub fn push(&mut self, buttons: Buttons, event_time_us: u64) -> Result<u64, ProtocolError> {
-        if self.entries.len() >= self.capacity {
+        if self.length >= self.capacity {
             return Err(ProtocolError::EdgeJournalFull {
                 capacity: self.capacity,
             });
@@ -56,11 +58,12 @@ impl EdgeJournal {
             .checked_add(1)
             .ok_or(ProtocolError::SequenceExhausted)?;
 
-        self.entries.push_back(Edge {
+        self.entries[(self.head + self.length) % MAX_EDGE_JOURNAL] = Some(Edge {
             edge_id,
             buttons,
             event_time_us,
         });
+        self.length += 1;
         self.highest_issued = edge_id;
         Ok(edge_id)
     }
@@ -82,26 +85,33 @@ impl EdgeJournal {
 
         self.acknowledged = highest_contiguous;
         let mut removed = 0;
-        while self
-            .entries
-            .front()
-            .is_some_and(|edge| edge.edge_id <= highest_contiguous)
+        while self.length != 0
+            && self.entries[self.head].is_some_and(|edge| edge.edge_id <= highest_contiguous)
         {
-            self.entries.pop_front();
+            self.entries[self.head] = None;
+            self.head = (self.head + 1) % MAX_EDGE_JOURNAL;
+            self.length -= 1;
             removed += 1;
         }
         Ok(removed)
     }
 
     /// Up to `limit` unacknowledged entries in ascending order.
-    pub fn pending_batch(&self, limit: usize) -> Option<EdgesPayload> {
+    /// Allocation failure is propagated, never treated as an empty journal.
+    pub fn pending_batch(&self, limit: usize) -> Result<Option<EdgesPayload>, ProtocolError> {
         let limit = limit.min(MAX_EDGES_PER_FRAME);
-        if limit == 0 || self.entries.is_empty() {
-            return None;
+        if limit == 0 || self.length == 0 {
+            return Ok(None);
         }
-        Some(EdgesPayload {
-            entries: self.entries.iter().take(limit).copied().collect(),
-        })
+        let count = limit.min(self.length);
+        let mut entries = Vec::new();
+        entries
+            .try_reserve_exact(count)
+            .map_err(|_| ProtocolError::ResourceExhausted)?;
+        entries.extend(
+            (0..count).filter_map(|index| self.entries[(self.head + index) % MAX_EDGE_JOURNAL]),
+        );
+        Ok(Some(EdgesPayload { entries }))
     }
 
     /// Highest edge ID ever issued.
@@ -116,22 +126,24 @@ impl EdgeJournal {
 
     /// Number of unacknowledged entries still retained.
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.length
     }
 
     /// Returns whether no unacknowledged entries remain.
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.length == 0
     }
 
     /// Returns whether the journal cannot accept another transition.
     pub fn is_full(&self) -> bool {
-        self.entries.len() >= self.capacity
+        self.length >= self.capacity
     }
 
     /// Removes every entry and starts a fresh edge sequence.
     pub fn reset(&mut self) {
-        self.entries.clear();
+        self.entries.fill(None);
+        self.head = 0;
+        self.length = 0;
         self.next_edge_id = 1;
         self.highest_issued = 0;
         self.acknowledged = 0;
@@ -148,7 +160,7 @@ impl Default for EdgeJournal {
 #[derive(Debug, Clone)]
 pub struct EdgeReceiver {
     highest_contiguous: u64,
-    reorder: BTreeMap<u64, Edge>,
+    reorder: [Option<Edge>; MAX_EDGE_JOURNAL],
 }
 
 impl EdgeReceiver {
@@ -156,7 +168,7 @@ impl EdgeReceiver {
     pub fn new() -> Self {
         Self {
             highest_contiguous: 0,
-            reorder: BTreeMap::new(),
+            reorder: [None; MAX_EDGE_JOURNAL],
         }
     }
 
@@ -165,9 +177,22 @@ impl EdgeReceiver {
     /// Duplicates are ignored. IDs farther than [`MAX_EDGE_JOURNAL`] ahead of
     /// the current cursor are rejected rather than buffered.
     pub fn receive(&mut self, entries: &[Edge]) -> Result<EdgeDelivery, ProtocolError> {
+        if entries.len() > MAX_EDGE_JOURNAL {
+            return Err(ProtocolError::EdgeJournalFull {
+                capacity: MAX_EDGE_JOURNAL,
+            });
+        }
         // Validate the complete batch before inserting any entry. A rejected
         // batch must not become input through a later receive operation.
-        for edge in entries {
+        for (index, edge) in entries.iter().enumerate() {
+            if entries[..index]
+                .iter()
+                .any(|previous| previous.edge_id == edge.edge_id && previous != edge)
+            {
+                return Err(ProtocolError::ValueOutOfRange {
+                    field: "conflicting edge",
+                });
+            }
             if edge.edge_id <= self.highest_contiguous {
                 continue;
             }
@@ -182,27 +207,31 @@ impl EdgeReceiver {
                     highest_contiguous: self.highest_contiguous,
                 });
             }
+            if self.reorder[(edge.edge_id % MAX_EDGE_JOURNAL as u64) as usize]
+                .is_some_and(|previous| previous != *edge)
+            {
+                return Err(ProtocolError::ValueOutOfRange {
+                    field: "conflicting edge",
+                });
+            }
         }
+        let mut applied = Vec::new();
+        applied
+            .try_reserve_exact(MAX_EDGE_JOURNAL)
+            .map_err(|_| ProtocolError::ResourceExhausted)?;
         for edge in entries {
             if edge.edge_id <= self.highest_contiguous {
                 continue;
             }
-            if self.reorder.contains_key(&edge.edge_id) {
-                continue;
-            }
-            if self.reorder.len() >= MAX_EDGE_JOURNAL {
-                return Err(ProtocolError::EdgeJournalFull {
-                    capacity: MAX_EDGE_JOURNAL,
-                });
-            }
-            self.reorder.insert(edge.edge_id, *edge);
+            self.reorder[(edge.edge_id % MAX_EDGE_JOURNAL as u64) as usize] = Some(*edge);
         }
 
-        let mut applied = Vec::new();
         while let Some(next) = self.highest_contiguous.checked_add(1) {
-            let Some(edge) = self.reorder.remove(&next) else {
+            let slot = (next % MAX_EDGE_JOURNAL as u64) as usize;
+            let Some(edge) = self.reorder[slot].filter(|edge| edge.edge_id == next) else {
                 break;
             };
+            self.reorder[slot] = None;
             self.highest_contiguous = next;
             applied.push(edge);
         }
@@ -210,7 +239,7 @@ impl EdgeReceiver {
         Ok(EdgeDelivery {
             applied,
             highest_contiguous: self.highest_contiguous,
-            has_gap: !self.reorder.is_empty(),
+            has_gap: self.buffered() != 0,
         })
     }
 
@@ -221,7 +250,7 @@ impl EdgeReceiver {
 
     /// First missing edge ID when a gap exists.
     pub fn missing_from(&self) -> Option<u64> {
-        if self.reorder.is_empty() {
+        if self.buffered() == 0 {
             None
         } else {
             self.highest_contiguous.checked_add(1)
@@ -230,13 +259,13 @@ impl EdgeReceiver {
 
     /// Number of buffered transitions waiting on a gap.
     pub fn buffered(&self) -> usize {
-        self.reorder.len()
+        self.reorder.iter().flatten().count()
     }
 
     /// Clears the cursor and every buffered transition.
     pub fn reset(&mut self) {
         self.highest_contiguous = 0;
-        self.reorder.clear();
+        self.reorder.fill(None);
     }
 }
 
@@ -280,7 +309,7 @@ mod tests {
         assert_eq!(journal.acknowledge(1).unwrap(), 1);
         assert_eq!(journal.acknowledged(), 1);
         assert_eq!(journal.len(), 1);
-        assert_eq!(journal.pending_batch(12).unwrap().entries.len(), 1);
+        assert_eq!(journal.pending_batch(12).unwrap().unwrap().entries.len(), 1);
 
         assert_eq!(journal.acknowledge(2).unwrap(), 1);
         assert!(journal.is_empty());
@@ -318,7 +347,7 @@ mod tests {
         journal.push(Buttons::A, 100).unwrap();
         journal.push(Buttons::neutral(), 110).unwrap();
 
-        let batch = journal.pending_batch(12).unwrap();
+        let batch = journal.pending_batch(12).unwrap().unwrap();
         let mut receiver = EdgeReceiver::new();
         let delivery = receiver.receive(&batch.entries).unwrap();
 
@@ -410,5 +439,30 @@ mod tests {
         receiver.receive(&[edge(1, Buttons::A)]).unwrap();
         receiver.reset();
         assert_eq!(receiver.highest_contiguous(), 0);
+    }
+
+    #[test]
+    fn conflicting_duplicates_and_oversized_batches_do_not_mutate_receiver() {
+        let mut receiver = EdgeReceiver::new();
+        assert!(
+            receiver
+                .receive(&[edge(1, Buttons::A), edge(1, Buttons::B)])
+                .is_err()
+        );
+        assert_eq!(receiver.highest_contiguous(), 0);
+        assert_eq!(receiver.buffered(), 0);
+        assert!(
+            receiver
+                .receive(&[edge(1, Buttons::A); MAX_EDGE_JOURNAL + 1])
+                .is_err()
+        );
+        assert_eq!(
+            receiver
+                .receive(&[edge(1, Buttons::A), edge(1, Buttons::A)])
+                .unwrap()
+                .applied
+                .len(),
+            1
+        );
     }
 }

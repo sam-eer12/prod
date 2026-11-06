@@ -90,7 +90,10 @@ impl InputAssembler {
             }
             cursor = edge.edge_id;
         }
-        let mut reports = Vec::with_capacity(delivery.applied.len());
+        let mut reports = Vec::new();
+        reports
+            .try_reserve_exact(delivery.applied.len())
+            .map_err(|_| ProtocolError::ResourceExhausted)?;
         for edge in &delivery.applied {
             self.output.buttons = edge.buttons;
             self.cursor = edge.edge_id;

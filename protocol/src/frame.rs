@@ -1,9 +1,9 @@
 //! Versioned wire frames shared by the phone and desktop.
 //!
 //! The clear header and the encrypted payload are handled separately. A frame
-//! on the wire is `header || ciphertext || tag`; see [`crate::crypto`] for the
-//! authenticated envelope. This module only defines and validates the inner
-//! payload formats.
+//! on UDP is `header || ciphertext || tag`; TCP prepends an authenticated
+//! two-byte length. See [`crate::crypto`] for the authenticated envelope. This
+//! module only defines and validates the inner payload formats.
 
 use crate::error::ProtocolError;
 use crate::{MAGIC, WIRE_VERSION};
@@ -325,7 +325,10 @@ impl EdgesPayload {
             });
         }
 
-        let mut bytes = Vec::with_capacity(2 + self.entries.len() * 18);
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(2 + self.entries.len() * 18)
+            .map_err(|_| ProtocolError::ResourceExhausted)?;
         bytes.push(self.entries.len() as u8);
         bytes.push(0);
 
@@ -372,7 +375,10 @@ impl EdgesPayload {
             });
         }
 
-        let mut entries = Vec::with_capacity(count);
+        let mut entries = Vec::new();
+        entries
+            .try_reserve_exact(count)
+            .map_err(|_| ProtocolError::ResourceExhausted)?;
         let mut previous = 0_u64;
         for index in 0..count {
             let offset = 2 + index * 18;

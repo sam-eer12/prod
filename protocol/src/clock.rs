@@ -7,6 +7,110 @@
 //! freshness cannot be established, callers must remain neutral.
 
 use crate::error::ProtocolError;
+use crate::frame::{PingPayload, PongPayload};
+
+const CLOCK_PROBE_TIMEOUT_US: u64 = 3_000_000;
+const CLOCK_ESTIMATE_TTL_US: u64 = 5_000_000;
+const CLOCK_DRIFT_PPM: u64 = 1_000;
+
+/// One outstanding authenticated clock probe and one bounded estimate. This
+/// conservative model assumes relative clock drift of at most 1000 ppm.
+/// Only pass Pong frames after AEAD/replay checks; renew at least every 5 s.
+#[derive(Debug, Default)]
+pub struct ClockSync {
+    next_id: u64,
+    pending: Option<PingPayload>,
+    estimate: Option<(ClockBounds, u64)>,
+    last_now: Option<u64>,
+}
+impl ClockSync {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    fn advance(&mut self, now_us: u64) -> Result<(), ProtocolError> {
+        if self.last_now.is_some_and(|last| now_us < last) {
+            self.pending = None;
+            self.estimate = None;
+            return Err(ProtocolError::ClockRegression);
+        }
+        self.last_now = Some(now_us);
+        Ok(())
+    }
+    pub fn ping(&mut self, now_us: u64) -> Result<PingPayload, ProtocolError> {
+        self.advance(now_us)?;
+        if self
+            .pending
+            .is_some_and(|ping| now_us - ping.sent_time_us < CLOCK_PROBE_TIMEOUT_US)
+        {
+            return Err(ProtocolError::PairingState);
+        }
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .ok_or(ProtocolError::SequenceExhausted)?;
+        let ping = PingPayload {
+            ping_id: self.next_id,
+            sent_time_us: now_us,
+        };
+        self.pending = Some(ping);
+        Ok(ping)
+    }
+    pub fn accept_pong(
+        &mut self,
+        pong: &PongPayload,
+        now_us: u64,
+    ) -> Result<ClockBounds, ProtocolError> {
+        self.advance(now_us)?;
+        let ping = self
+            .pending
+            .ok_or(ProtocolError::ClockUncertaintyTooLarge)?;
+        if pong.ping_id != ping.ping_id || pong.echo_time_us != ping.sent_time_us {
+            return Err(ProtocolError::PairingRequestMismatch);
+        }
+        self.pending = None;
+        let round_trip = now_us - ping.sent_time_us;
+        let processing = pong
+            .sent_time_us
+            .checked_sub(pong.received_time_us)
+            .ok_or(ProtocolError::ClockUncertaintyTooLarge)?;
+        if round_trip >= CLOCK_PROBE_TIMEOUT_US || processing > round_trip {
+            return Err(ProtocolError::ClockUncertaintyTooLarge);
+        }
+        // peer-local offset lies between t3-t4 and t2-t1. Nonnegative
+        // one-way delays are sufficient; symmetric routing is not assumed.
+        let low = i128::from(pong.sent_time_us) - i128::from(now_us);
+        let high = i128::from(pong.received_time_us) - i128::from(ping.sent_time_us);
+        let midpoint = (low + high).div_euclid(2);
+        let offset =
+            i64::try_from(midpoint).map_err(|_| ProtocolError::ClockUncertaintyTooLarge)?;
+        let uncertainty = u64::try_from(high - midpoint)
+            .map_err(|_| ProtocolError::ClockUncertaintyTooLarge)?
+            + round_trip.div_ceil(1_000_000 / CLOCK_DRIFT_PPM);
+        let bounds = ClockBounds::new(offset, uncertainty)?;
+        self.estimate = Some((bounds, now_us));
+        Ok(bounds)
+    }
+    pub fn bounds(&mut self, now_us: u64) -> Result<ClockBounds, ProtocolError> {
+        self.advance(now_us)?;
+        let (estimate, measured) = self
+            .estimate
+            .ok_or(ProtocolError::ClockUncertaintyTooLarge)?;
+        let age = now_us - measured;
+        if age >= CLOCK_ESTIMATE_TTL_US {
+            self.estimate = None;
+            return Err(ProtocolError::ClockUncertaintyTooLarge);
+        }
+        ClockBounds::new(
+            estimate.offset_us,
+            estimate.uncertainty_us + age.div_ceil(1_000_000 / CLOCK_DRIFT_PPM),
+        )
+    }
+    /// Discard measured clocks at every endpoint/epoch transition.
+    pub fn reset(&mut self) {
+        self.pending = None;
+        self.estimate = None;
+    }
+}
 
 /// Beyond this measured uncertainty, freshness is considered unknowable.
 ///
@@ -90,6 +194,66 @@ impl ClockBounds {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn authenticated_probe_bounds_asymmetric_delay_and_grows_drift() {
+        let mut sync = ClockSync::new();
+        assert!(sync.bounds(1000).is_err());
+        let ping = sync.ping(1000).unwrap();
+        assert!(sync.ping(1001).is_err());
+        let pong = PongPayload {
+            ping_id: ping.ping_id,
+            echo_time_us: 1000,
+            received_time_us: 2200,
+            sent_time_us: 2300,
+        };
+        let bounds = sync.accept_pong(&pong, 1500).unwrap();
+        assert_eq!(bounds.offset_us, 1000);
+        assert_eq!(bounds.uncertainty_us, 201);
+        assert_eq!(sync.bounds(1_001_500).unwrap().uncertainty_us, 1201);
+        assert!(sync.bounds(5_001_500).is_err());
+    }
+
+    #[test]
+    fn unmatched_echo_duplicate_pong_invalid_times_and_regression_fail() {
+        let mut sync = ClockSync::new();
+        let ping = sync.ping(1000).unwrap();
+        let mut pong = PongPayload {
+            ping_id: ping.ping_id + 1,
+            echo_time_us: 1000,
+            received_time_us: 1000,
+            sent_time_us: 1000,
+        };
+        assert!(sync.accept_pong(&pong, 1100).is_err());
+        pong.ping_id = ping.ping_id;
+        sync.accept_pong(&pong, 1200).unwrap();
+        assert!(sync.accept_pong(&pong, 1200).is_err());
+        assert_eq!(sync.bounds(1199), Err(ProtocolError::ClockRegression));
+        assert!(sync.bounds(1200).is_err());
+        let ping = sync.ping(2000).unwrap();
+        pong.ping_id = ping.ping_id;
+        pong.echo_time_us = ping.sent_time_us;
+        pong.received_time_us = 1;
+        pong.sent_time_us = 10_000;
+        assert!(sync.accept_pong(&pong, 2100).is_err());
+    }
+
+    #[test]
+    fn timed_out_probe_and_epoch_reset_cannot_establish_freshness() {
+        let mut sync = ClockSync::new();
+        let ping = sync.ping(0).unwrap();
+        let pong = PongPayload {
+            ping_id: ping.ping_id,
+            echo_time_us: 0,
+            received_time_us: 0,
+            sent_time_us: 0,
+        };
+        assert!(sync.accept_pong(&pong, CLOCK_PROBE_TIMEOUT_US).is_err());
+        sync.ping(CLOCK_PROBE_TIMEOUT_US).unwrap();
+        sync.reset();
+        assert!(sync.accept_pong(&pong, CLOCK_PROBE_TIMEOUT_US).is_err());
+        assert!(sync.bounds(CLOCK_PROBE_TIMEOUT_US).is_err());
+    }
 
     #[test]
     fn exact_clock_measures_direct_age() {
