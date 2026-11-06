@@ -9,10 +9,20 @@ use std::fmt;
 /// key, or transcript material.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProtocolError {
+    ResourceExhausted,
+    SessionExpired,
+    ResumeState,
+    ClockRegression,
     /// The frame is shorter than the fixed minimum for its type.
-    TruncatedFrame { len: usize, minimum: usize },
+    TruncatedFrame {
+        len: usize,
+        minimum: usize,
+    },
     /// The frame exceeds the authenticated frame-size budget.
-    OversizedFrame { len: usize, maximum: usize },
+    OversizedFrame {
+        len: usize,
+        maximum: usize,
+    },
     /// The first frame byte was not [`crate::MAGIC`].
     BadMagic(u8),
     /// The header version nibble is not supported.
@@ -20,15 +30,24 @@ pub enum ProtocolError {
     /// The header type nibble is not a known frame type.
     UnknownFrameType(u8),
     /// A frame with a valid type had the wrong payload length.
-    InvalidLength { frame_type: u8, len: usize },
+    InvalidLength {
+        frame_type: u8,
+        len: usize,
+    },
     /// A field documented as reserved was not zero.
-    ReservedNonZero { field: &'static str },
+    ReservedNonZero {
+        field: &'static str,
+    },
     /// A field value is outside its documented range.
-    ValueOutOfRange { field: &'static str },
+    ValueOutOfRange {
+        field: &'static str,
+    },
     /// AEAD authentication failed.
     AuthenticationFailed,
     /// The packet counter was already accepted under this key.
-    ReplayedSequence { seq: u64 },
+    ReplayedSequence {
+        seq: u64,
+    },
     /// The per-key counter reached the rekey threshold.
     SequenceExhausted,
     /// The routing tag did not match the active session.
@@ -40,7 +59,9 @@ pub enum ProtocolError {
     /// All pairing attempts were consumed; a new consent action is required.
     PairingTokenLocked,
     /// The submitted pairing code was wrong.
-    PairingCodeMismatch { attempts_remaining: u8 },
+    PairingCodeMismatch {
+        attempts_remaining: u8,
+    },
     /// The peer offered or selected a pairing suite this build does not support.
     UnsupportedSuite(u16),
     /// A pairing label was empty, too long, or contained control characters.
@@ -50,7 +71,9 @@ pub enum ProtocolError {
     /// A pairing message arrived in a state that cannot accept it.
     PairingState,
     /// The peer aborted the pairing request with a numeric reason.
-    PairingAborted { reason: u8 },
+    PairingAborted {
+        reason: u8,
+    },
     /// The password-authenticated exchange or its key confirmation failed.
     ///
     /// The variants deliberately collapse transcript, point, and confirmation
@@ -59,7 +82,9 @@ pub enum ProtocolError {
     /// The operating system random source failed.
     RandomUnavailable,
     /// The bounded digital-edge journal has no room for another transition.
-    EdgeJournalFull { capacity: usize },
+    EdgeJournalFull {
+        capacity: usize,
+    },
     /// An edge ID is too far ahead of the receiver cursor.
     EdgeOutOfWindow {
         edge_id: u64,
@@ -85,6 +110,12 @@ pub enum ProtocolError {
 impl fmt::Display for ProtocolError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ResourceExhausted => formatter.write_str("bounded protocol resource exhausted"),
+            Self::SessionExpired => formatter.write_str("protocol session expired"),
+            Self::ResumeState => formatter.write_str("invalid authenticated resume state"),
+            Self::ClockRegression => {
+                formatter.write_str("monotonic protocol clock moved backwards")
+            }
             Self::TruncatedFrame { len, minimum } => {
                 write!(formatter, "frame is {len} bytes; minimum is {minimum}")
             }

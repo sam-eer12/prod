@@ -70,7 +70,7 @@ impl PairedSession {
     pub fn seal(&mut self, transport: Transport, frame: &Frame) -> Result<Vec<u8>, ProtocolError> {
         match transport {
             Transport::Udp => self.send_udp.seal_frame(frame),
-            Transport::Tcp => self.send_tcp.seal_frame(frame),
+            Transport::Tcp => self.send_tcp.seal_tcp_frame(frame),
         }
     }
 
@@ -81,7 +81,7 @@ impl PairedSession {
     ) -> Result<OpenedFrame, ProtocolError> {
         match transport {
             Transport::Udp => self.receive_udp.open_frame(bytes, &mut self.replay_udp),
-            Transport::Tcp => self.receive_tcp.open_frame(bytes, &mut self.replay_tcp),
+            Transport::Tcp => self.receive_tcp.open_tcp_frame(bytes, &mut self.replay_tcp),
         }
     }
 

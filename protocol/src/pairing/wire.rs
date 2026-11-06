@@ -58,6 +58,9 @@ pub enum PairingMessage {
         request_id: [u8; 16],
         reason: u8,
     },
+    Retry {
+        request_id: [u8; 16],
+    },
 }
 
 impl PairingMessage {
@@ -69,6 +72,7 @@ impl PairingMessage {
             Self::PakeB { .. } => 4,
             Self::ConfirmA { .. } => 5,
             Self::Abort { .. } => 6,
+            Self::Retry { .. } => 7,
         }
     }
 
@@ -79,7 +83,8 @@ impl PairingMessage {
             Self::PakeA { request_id, .. }
             | Self::PakeB { request_id, .. }
             | Self::ConfirmA { request_id, .. }
-            | Self::Abort { request_id, .. } => request_id,
+            | Self::Abort { request_id, .. }
+            | Self::Retry { request_id } => request_id,
         }
     }
 
@@ -128,6 +133,7 @@ impl PairingMessage {
                 bytes.extend_from_slice(request_id);
                 bytes.push(*reason);
             }
+            Self::Retry { request_id } => bytes.extend_from_slice(request_id),
         }
         let length = bytes.len() - 2;
         let prefix = (length as u16).to_be_bytes();
@@ -229,6 +235,12 @@ impl PairingMessage {
                 Ok(Self::Abort {
                     request_id: fixed(payload, 0)?,
                     reason: payload[16],
+                })
+            }
+            7 => {
+                exact(kind, payload, 16)?;
+                Ok(Self::Retry {
+                    request_id: fixed(payload, 0)?,
                 })
             }
             other => Err(ProtocolError::UnknownFrameType(other)),

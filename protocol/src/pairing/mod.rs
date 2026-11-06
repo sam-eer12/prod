@@ -6,9 +6,11 @@
 //! The phone must call `PhoneHandshake::consent` only after a real Allow action.
 
 mod handshake;
+pub mod host;
 mod pake;
 mod random;
 mod session;
+pub mod transport;
 pub mod wire;
 
 pub use handshake::{DesktopHandshake, PhoneHandshake};

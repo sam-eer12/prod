@@ -56,6 +56,9 @@ impl DesktopHandshake {
     pub fn request(&self) -> PairingMessage {
         PairingMessage::Request(self.request.clone())
     }
+    pub const fn deadline_ms(&self) -> Option<u64> {
+        self.deadline_ms
+    }
 
     pub fn accept(&mut self, message: &PairingMessage, now_ms: u64) -> Result<(), ProtocolError> {
         self.check_message(message)?;

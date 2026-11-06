@@ -126,7 +126,7 @@ impl SessionSecret {
         Self(Zeroizing::new(bytes))
     }
 
-    fn expose(&self) -> &[u8; KEY_LEN] {
+    pub(crate) fn expose(&self) -> &[u8; KEY_LEN] {
         &self.0
     }
 }
@@ -199,6 +199,17 @@ impl TrafficKey {
 
     /// Encrypts a frame payload and returns `header || ciphertext || tag`.
     pub fn seal_frame(&mut self, frame: &Frame) -> Result<Vec<u8>, ProtocolError> {
+        self.seal_envelope(frame, false)
+    }
+
+    /// Encrypts a complete TCP frame. Both the BE length prefix and header
+    /// are AEAD associated data; the prefix excludes its own two bytes.
+    pub fn seal_tcp_frame(&mut self, frame: &Frame) -> Result<Vec<u8>, ProtocolError> {
+        self.require_tcp_domain()?;
+        self.seal_envelope(frame, true)
+    }
+
+    fn seal_envelope(&mut self, frame: &Frame, tcp: bool) -> Result<Vec<u8>, ProtocolError> {
         let payload = frame.encode_payload()?;
         if payload.len() > MAX_PAYLOAD_LEN {
             return Err(ProtocolError::OversizedFrame {
@@ -216,9 +227,18 @@ impl TrafficKey {
             seq: self.next_seq,
         };
         let header_bytes = header.encode();
-        let ciphertext = self.encrypt(&header_bytes, &payload)?;
-        let mut frame_bytes = Vec::with_capacity(HEADER_LEN + ciphertext.len());
-        frame_bytes.extend_from_slice(&header_bytes);
+        let body_len = HEADER_LEN + payload.len() + TAG_LEN;
+        let mut aad = [0_u8; 2 + HEADER_LEN];
+        let aad_bytes = if tcp {
+            aad[..2].copy_from_slice(&(body_len as u16).to_be_bytes());
+            aad[2..].copy_from_slice(&header_bytes);
+            &aad[..]
+        } else {
+            &header_bytes[..]
+        };
+        let ciphertext = self.encrypt(aad_bytes, &payload)?;
+        let mut frame_bytes = Vec::with_capacity(aad_bytes.len() + ciphertext.len());
+        frame_bytes.extend_from_slice(aad_bytes);
         frame_bytes.extend_from_slice(&ciphertext);
         self.next_seq += 1;
         Ok(frame_bytes)
@@ -233,6 +253,28 @@ impl TrafficKey {
         bytes: &[u8],
         replay: &mut ReplayWindow,
     ) -> Result<OpenedFrame, ProtocolError> {
+        self.open_envelope(bytes, replay, false)
+    }
+
+    /// Opens a complete TCP frame and authenticates its exact length prefix.
+    pub fn open_tcp_frame(
+        &self,
+        bytes: &[u8],
+        replay: &mut ReplayWindow,
+    ) -> Result<OpenedFrame, ProtocolError> {
+        self.require_tcp_domain()?;
+        crate::pairing::transport::FrameMode::Authenticated.validate(bytes)?;
+        self.open_envelope(bytes, replay, true)
+    }
+
+    fn open_envelope(
+        &self,
+        wire_bytes: &[u8],
+        replay: &mut ReplayWindow,
+        tcp: bool,
+    ) -> Result<OpenedFrame, ProtocolError> {
+        let prefix_len = if tcp { 2 } else { 0 };
+        let bytes = &wire_bytes[prefix_len..];
         if bytes.len() < HEADER_LEN + TAG_LEN {
             return Err(ProtocolError::TruncatedFrame {
                 len: bytes.len(),
@@ -254,7 +296,11 @@ impl TrafficKey {
             return Err(ProtocolError::SequenceExhausted);
         }
 
-        let plaintext = self.decrypt(&bytes[..HEADER_LEN], &bytes[HEADER_LEN..], header.seq)?;
+        let plaintext = self.decrypt(
+            &wire_bytes[..prefix_len + HEADER_LEN],
+            &bytes[HEADER_LEN..],
+            header.seq,
+        )?;
         if plaintext.len() > MAX_PAYLOAD_LEN {
             return Err(ProtocolError::OversizedFrame {
                 len: plaintext.len(),
@@ -268,6 +314,15 @@ impl TrafficKey {
         }
 
         Ok(OpenedFrame { header, frame })
+    }
+
+    fn require_tcp_domain(&self) -> Result<(), ProtocolError> {
+        if self.domain.transport != Transport::Tcp {
+            return Err(ProtocolError::ValueOutOfRange {
+                field: "TCP key domain",
+            });
+        }
+        Ok(())
     }
 
     fn encrypt(&self, aad: &[u8], payload: &[u8]) -> Result<Vec<u8>, ProtocolError> {
