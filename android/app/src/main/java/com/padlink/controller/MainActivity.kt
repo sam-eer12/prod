@@ -2,6 +2,7 @@ package com.padlink.controller
 
 import android.graphics.Color
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -12,6 +13,8 @@ import com.padlink.controller.ui.theme.PadLinkTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Pairing tokens must not appear in screenshots or task previews.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         // PadLink is dark-first to match the controller surface. Keep the system
         // bars transparent with light icons regardless of the device theme.

@@ -23,6 +23,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.text.font.FontFamily
+import com.padlink.controller.core.PairingUiState
+import com.padlink.controller.core.PairingPhase
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -43,7 +48,15 @@ import com.padlink.controller.ui.theme.StatusPairing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onOpenSettings: () -> Unit) {
+fun HomeScreen(
+    onOpenSettings: () -> Unit,
+    pairing: PairingUiState = PairingUiState(),
+    onStart: () -> Unit = {},
+    onStop: () -> Unit = {},
+    onAllow: (Long) -> Unit = {},
+    onDeny: (Long) -> Unit = {},
+    onCancel: (Long) -> Unit = {},
+) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -83,7 +96,45 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            ConnectionCard(state = ConnectionState.NOT_CONNECTED)
+            ConnectionCard(state = when (pairing.phase) {
+                PairingPhase.STOPPED -> ConnectionState.NOT_CONNECTED
+                PairingPhase.LISTENING -> ConnectionState.LISTENING
+                PairingPhase.CONSENT, PairingPhase.TOKEN -> ConnectionState.PAIRING
+                PairingPhase.PAIRED -> ConnectionState.CONNECTED
+                PairingPhase.ERROR -> ConnectionState.ERROR
+            })
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (pairing.endpoint.isNotEmpty()) {
+                        Text(stringResource(R.string.pairing_endpoint), style = MaterialTheme.typography.labelLarge)
+                        Text(pairing.endpoint, fontFamily = FontFamily.Monospace)
+                    }
+                    when (pairing.phase) {
+                        PairingPhase.STOPPED, PairingPhase.ERROR -> {
+                            if (pairing.message.isNotEmpty()) Text(pairing.message, color = MaterialTheme.colorScheme.error)
+                            Button(onClick = onStart) { Text(stringResource(R.string.pairing_start)) }
+                        }
+                        PairingPhase.CONSENT -> {
+                            Text(stringResource(R.string.pairing_request), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.pairing_unverified))
+                            Text(pairing.label)
+                            Text(pairing.address, fontFamily = FontFamily.Monospace)
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Button(onClick = { onAllow(pairing.connection) }) { Text(stringResource(R.string.pairing_allow)) }
+                                OutlinedButton(onClick = { onDeny(pairing.connection) }) { Text(stringResource(R.string.pairing_deny)) }
+                            }
+                        }
+                        PairingPhase.TOKEN -> {
+                            Text(stringResource(R.string.pairing_enter_code))
+                            Text(pairing.code, style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Monospace)
+                            Text(stringResource(R.string.pairing_expires, pairing.remainingSeconds))
+                            OutlinedButton(onClick = { onCancel(pairing.connection) }) { Text(stringResource(R.string.pairing_cancel)) }
+                        }
+                        PairingPhase.PAIRED -> OutlinedButton(onClick = { onCancel(pairing.connection) }) { Text(stringResource(R.string.pairing_disconnect)) }
+                        PairingPhase.LISTENING -> OutlinedButton(onClick = onStop) { Text(stringResource(R.string.pairing_stop)) }
+                    }
+                }
+            }
             NextMilestoneCard()
         }
     }
