@@ -23,14 +23,14 @@ toolchain is required.
 ### macOS and Linux
 
 ```sh
-curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/sam-eer12/prod/releases/latest/download/install.sh -o padlink-install.sh && sh padlink-install.sh --add-to-path
+padlink_installer="$(curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/sam-eer12/prod/releases/latest/download/install.sh)" && sh -c "$padlink_installer" sh --add-to-path
 ```
 
 ### Windows (PowerShell 5.1+)
 
 ```powershell
-curl.exe -fsSL --proto '=https' --proto-redir '=https' https://github.com/sam-eer12/prod/releases/latest/download/install.ps1 -o padlink-install.ps1
-if ($LASTEXITCODE -eq 0) { & .\padlink-install.ps1 -AddToPath }
+$padlink_installer = curl.exe -fsSL --proto '=https' --proto-redir '=https' https://github.com/sam-eer12/prod/releases/latest/download/install.ps1
+if ($LASTEXITCODE -eq 0) { & ([scriptblock]::Create(($padlink_installer -join "`n"))) -AddToPath }
 ```
 
 Open a new terminal after installation, then run:
@@ -41,7 +41,8 @@ padlink daemon start
 padlink update
 ```
 
-The commands download the complete installer before running it. The installers
+The commands keep the complete installer script in memory and run it only after
+the download succeeds; no installer script is saved to disk. The installers
 verify the release signature and checksums and add the CLI to your user PATH.
 Run the macOS/Linux installer without sudo. Installation starts no daemon automatically.
 `padlink update --check` checks without installing; `padlink autostart enable`
