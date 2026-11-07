@@ -72,9 +72,14 @@ impl Sandbox {
     }
     fn ok(&self, args: &[&str]) -> Output {
         let output = self.run(args);
+        let log = if output.status.success() {
+            String::new()
+        } else {
+            fs::read_to_string(self.state.join("daemon.log")).unwrap_or_default()
+        };
         assert!(
             output.status.success(),
-            "{args:?}: {}",
+            "{args:?}: {}\nDaemon log: {log}",
             String::from_utf8_lossy(&output.stderr)
         );
         output

@@ -129,7 +129,7 @@ pub fn rpc(state: &Path, op: &str) -> io::Result<Vec<u8>> {
     let mut output = Vec::with_capacity(MAX_FRAME);
     let mut buffer = [0_u8; 512];
     loop {
-        match stream.read(&mut buffer) {
+        match read_stream(&mut stream, &mut buffer) {
             Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
             Ok(n) => {
                 if output.len() + n > MAX_FRAME {
@@ -149,6 +149,49 @@ pub fn rpc(state: &Path, op: &str) -> io::Result<Vec<u8>> {
             Err(e) => return Err(e),
         }
     }
+}
+
+#[cfg(unix)]
+fn read_stream(stream: &mut Stream, buffer: &mut [u8]) -> io::Result<usize> {
+    stream.read(buffer)
+}
+
+#[cfg(windows)]
+fn read_stream(stream: &mut Stream, buffer: &mut [u8]) -> io::Result<usize> {
+    use std::os::windows::io::{AsHandle, AsRawHandle};
+    use windows_sys::Win32::System::Pipes::PeekNamedPipe;
+    if buffer.is_empty() {
+        return Ok(0);
+    }
+    let Stream::NamedPipe(pipe) = stream;
+    let mut available = 0;
+    // The byte-pipe adapter uses ReadFileEx. Check availability first: on a
+    // PIPE_NOWAIT handle an empty read can look like EOF or await completion,
+    // rather than yield WouldBlock. This thread is the sole reader of the pipe.
+    // SAFETY: the handle is live, and the only output pointer is a valid u32.
+    if unsafe {
+        PeekNamedPipe(
+            pipe.inner().as_handle().as_raw_handle(),
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null_mut(),
+            &mut available,
+            std::ptr::null_mut(),
+        )
+    } == 0
+    {
+        let error = io::Error::last_os_error();
+        return if matches!(error.raw_os_error(), Some(109 | 233)) {
+            Ok(0)
+        } else {
+            Err(error)
+        };
+    }
+    if available == 0 {
+        return Err(io::ErrorKind::WouldBlock.into());
+    }
+    let count = buffer.len().min(available as usize);
+    stream.read(&mut buffer[..count])
 }
 
 struct RpcStream(Stream);
@@ -400,7 +443,7 @@ impl Client {
         #[cfg(windows)]
         if !self.output.is_empty() && self.sent == self.output.len() {
             let mut ack = [0_u8; 1];
-            return match self.stream.read(&mut ack) {
+            return match read_stream(&mut self.stream, &mut ack) {
                 Ok(_) => Ok(true),
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => Ok(false),
                 Err(e) => Err(e),
@@ -410,7 +453,7 @@ impl Client {
             if self.used == MAX_FRAME {
                 return Ok(true);
             }
-            match self.stream.read(&mut self.input[self.used..]) {
+            match read_stream(&mut self.stream, &mut self.input[self.used..]) {
                 Ok(0) => return Ok(true),
                 Ok(n) => self.used += n,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(false),
