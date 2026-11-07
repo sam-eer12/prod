@@ -15,6 +15,43 @@ The product requirements and engineering plan live in
 [PRD.md](PRD.md) and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). The
 original product prompt is preserved at the top of the PRD.
 
+## Install the CLI
+
+Install the latest prebuilt CLI with the command for your desktop. No Rust
+toolchain is required.
+
+### macOS and Linux
+
+```sh
+curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/sam-eer12/prod/releases/latest/download/install.sh -o padlink-install.sh && sh padlink-install.sh --add-to-path
+```
+
+### Windows (PowerShell 5.1+)
+
+```powershell
+curl.exe -fsSL --proto '=https' --proto-redir '=https' https://github.com/sam-eer12/prod/releases/latest/download/install.ps1 -o padlink-install.ps1
+if ($LASTEXITCODE -eq 0) { & .\padlink-install.ps1 -AddToPath }
+```
+
+Open a new terminal after installation, then run:
+
+```sh
+padlink
+padlink daemon start
+padlink update
+```
+
+The commands download the complete installer before running it. The installers
+verify the release signature and checksums and add the CLI to your user PATH.
+Run the macOS/Linux installer without sudo. Installation starts no daemon automatically.
+`padlink update --check` checks without installing; `padlink autostart enable`
+opts into login startup; `padlink uninstall` removes the CLI while retaining user state.
+
+Prebuilt targets: macOS 13+ Intel/Apple Silicon, Linux 5.4+ x64/ARM64 and
+Windows 10+ x64. macOS CLI builds need no paid Apple Developer identity.
+Windows PowerShell instructions, release trust, PATH setup and rollback are in
+[docs/CLI_DISTRIBUTION.md](docs/CLI_DISTRIBUTION.md).
+
 ## What is in this setup
 
 | Area | Status |
@@ -160,27 +197,6 @@ Controller previews captured from the Android View on an API 36 emulator:
 Controller UI validation on 2026-11-07: all 13 JVM tests and seven emulator tests
 passed; the debug APK and Android lint completed successfully. Physical-device
 haptic feel and desktop gameplay are not covered by these checks.
-
-## Install the CLI
-
-macOS/Linux (run the installer only after curl succeeds):
-
-```sh
-curl --fail --location --proto '=https' --proto-redir '=https' \
-  https://github.com/sam-eer12/prod/releases/latest/download/install.sh \
-  --output /tmp/padlink-install.sh &&
-sh /tmp/padlink-install.sh --add-to-path
-```
-
-Open a new terminal, then run `padlink`, `padlink daemon start` or
-`padlink update`. `padlink update --check` checks without installing.
-`padlink autostart enable` opts into login startup; `padlink uninstall` removes
-the CLI while retaining user state. Installation starts no daemon automatically.
-
-Prebuilt targets: macOS 13+ Intel/Apple Silicon, Linux 5.4+ x64/ARM64 and
-Windows 10+ x64. macOS CLI builds need no paid Apple Developer identity.
-Windows PowerShell instructions, release trust, PATH setup and rollback are in
-[docs/CLI_DISTRIBUTION.md](docs/CLI_DISTRIBUTION.md).
 
 ## Build and run the CLI
 
