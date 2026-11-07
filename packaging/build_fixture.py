@@ -22,12 +22,12 @@ def main():
     version = "0.0.1-fixture" if args.fail_start else VERSION
     original_manifest, original_lock = manifest.read_bytes(), lock.read_bytes()
     try:
-        manifest.write_text(re.sub(r'^version = "[^"]+"', f'version = "{version}"', original_manifest.decode(), count=1, flags=re.MULTILINE))
+        manifest.write_bytes(re.sub(r'^version = "[^"]+"', f'version = "{version}"', original_manifest.decode(), count=1, flags=re.MULTILINE).encode())
         if args.fail_start:
-            source.write_text(original_source.decode().replace(
+            source.write_bytes(original_source.decode().replace(
                 'DaemonAction::Start => daemon::start(state),',
                 'DaemonAction::Start => Err(std::io::Error::other("fixture startup failure")),',
-            ))
+            ).encode())
         subprocess.run(["cargo", "build", "--offline", "--release", "-p", "padlink-cli", "--target", args.target], cwd=ROOT, check=True)
         binary = ROOT / "target" / args.target / "release" / ("padlink.exe" if "windows" in args.target else "padlink")
         subprocess.run(["python3", str(ROOT / "packaging/build_release.py"), "--binary", str(binary), "--target", args.target, "--version", version, "--out", str(args.out)], check=True)

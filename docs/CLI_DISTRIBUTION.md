@@ -13,7 +13,7 @@ Download the complete installer before running it:
 ```sh
 curl --fail --location --proto '=https' --proto-redir '=https' \
   https://github.com/sam-eer12/prod/releases/latest/download/install.sh \
-  --output /tmp/padlink-install.sh
+  --output /tmp/padlink-install.sh &&
 sh /tmp/padlink-install.sh --add-to-path
 ```
 

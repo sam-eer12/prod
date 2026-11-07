@@ -72,9 +72,9 @@ try {
     if ($From) { Copy-Item -LiteralPath "$From\$archive" -Destination $stage } else { Fetch $url "$stage\$archive" $size }
     if ((Get-Item "$stage\$archive").Length -ne $size) { throw "Archive size verification failed." }
     $hasher = [Security.Cryptography.SHA256]::Create()
-    $input = [IO.File]::OpenRead("$stage\$archive")
-    try { $actual = [BitConverter]::ToString($hasher.ComputeHash($input)).Replace("-", "").ToLowerInvariant() }
-    finally { $input.Dispose(); $hasher.Dispose() }
+    $archiveStream = [IO.File]::OpenRead("$stage\$archive")
+    try { $actual = [BitConverter]::ToString($hasher.ComputeHash($archiveStream)).Replace("-", "").ToLowerInvariant() }
+    finally { $archiveStream.Dispose(); $hasher.Dispose() }
     if ($actual -ne $expected) { throw "Archive checksum verification failed." }
     $entries = @(& tar.exe -tzf "$stage\$archive")
     if ($LASTEXITCODE -ne 0 -or $entries.Count -ne 1 -or $entries[0] -ne "padlink.exe") { throw "Unexpected archive layout." }
