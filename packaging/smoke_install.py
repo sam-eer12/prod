@@ -11,7 +11,13 @@ import time
 
 
 def run(command, success=True):
-    result = subprocess.run([str(x) for x in command], capture_output=True, text=True, timeout=30)
+    # A detached Windows child can retain an inherited pipe handle. File-based
+    # capture observes the CLI's exit without waiting for that daemon's EOF.
+    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        result = subprocess.run([str(x) for x in command], stdout=stdout, stderr=stderr, timeout=30)
+        stdout.seek(0); stderr.seek(0)
+        result.stdout = stdout.read().decode("utf-8", errors="replace")
+        result.stderr = stderr.read().decode("utf-8", errors="replace")
     if (result.returncode == 0) != success:
         raise RuntimeError(f"Command failed its expectation: {command}\n{result.stdout}\n{result.stderr}")
     return result

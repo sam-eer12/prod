@@ -33,23 +33,35 @@ impl Sandbox {
         }
     }
     fn run(&self, args: &[&str]) -> Output {
+        // Background Windows children may inherit a pipe handle. Regular files
+        // let us inspect output without waiting for an unrelated daemon's EOF.
+        let stdout = self.root.join("command.stdout");
+        let stderr = self.root.join("command.stderr");
         let mut child = Command::new(env!("CARGO_BIN_EXE_padlink"))
             .arg("--state-dir")
             .arg(&self.state)
             .args(args)
             .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdout(fs::File::create(&stdout).unwrap())
+            .stderr(fs::File::create(&stderr).unwrap())
             .spawn()
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(15);
         loop {
-            if child.try_wait().unwrap().is_some() {
-                return child.wait_with_output().unwrap();
+            if let Some(status) = child.try_wait().unwrap() {
+                return Output {
+                    status,
+                    stdout: fs::read(&stdout).unwrap(),
+                    stderr: fs::read(&stderr).unwrap(),
+                };
             }
             if Instant::now() >= deadline {
                 let _ = child.kill();
-                let mut output = child.wait_with_output().unwrap();
+                let mut output = Output {
+                    status: child.wait().unwrap(),
+                    stdout: fs::read(&stdout).unwrap(),
+                    stderr: fs::read(&stderr).unwrap(),
+                };
                 output
                     .stderr
                     .extend_from_slice(b"\nCLI exceeded the 15-second test deadline\n");
