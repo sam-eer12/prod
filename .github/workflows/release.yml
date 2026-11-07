@@ -1,0 +1,217 @@
+name: CLI release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+    paths: ['desktop/**', 'packaging/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/release.yml']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version matching Cargo.toml (without v)'
+        required: true
+        default: '0.1.1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  version:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os, re, tomllib
+          source = tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version']
+          reference = os.environ['GITHUB_REF']
+          version = os.environ.get('REQUESTED_VERSION') or (os.environ['GITHUB_REF_NAME'].removeprefix('v') if reference.startswith('refs/tags/') else source)
+          if version != source or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+              raise SystemExit('Requested release must match the stable source version.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={version}\n')
+          PY
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      - name: Install native musl linker
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          python3 - <<'PY'
+          import os
+          variable = 'CARGO_TARGET_' + os.environ['RELEASE_TARGET'].upper().replace('-', '_') + '_LINKER'
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(variable + '=musl-gcc\n')
+          PY
+      - name: Use the static Windows C runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '"RUSTFLAGS=-C target-feature=+crt-static" >> $env:GITHUB_ENV'
+      - name: Test daemon and release validation
+        run: cargo test -p padlink-cli --locked
+      - name: Build the native CLI
+        run: cargo build --release -p padlink-cli --locked --target ${{ matrix.target }}
+      - name: Package the production binary
+        shell: bash
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          binary="target/$RELEASE_TARGET/release/padlink"
+          if [ "$RUNNER_OS" = Windows ]; then binary="$binary.exe"; fi
+          python3 packaging/build_release.py --binary "$binary" --target "$RELEASE_TARGET" --version "$RELEASE_VERSION" --out production
+      - name: Build an older-version fixture for real upgrades
+        run: python3 packaging/build_fixture.py --target ${{ matrix.target }} --out fixtures
+      - name: Build a candidate that exercises automatic failure rollback
+        run: python3 packaging/build_fixture.py --target ${{ matrix.target }} --out failed-fixtures --fail-start
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cli-production-${{ matrix.target }}
+          path: production/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cli-failed-fixture-${{ matrix.target }}
+          path: failed-fixtures/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cli-fixture-${{ matrix.target }}
+          path: fixtures/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  sign:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: cli-production-*
+          path: production
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: cli-fixture-*
+          path: fixtures
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: cli-failed-fixture-*
+          path: failed-fixtures
+          merge-multiple: true
+      - name: Sign production and isolated test manifests
+        # This key signs test-only fixtures as well; only production is published.
+        env:
+          PADLINK_RELEASE_SIGNING_KEY: ${{ secrets.PADLINK_RELEASE_SIGNING_KEY }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          python3 packaging/build_release.py --version "$RELEASE_VERSION" --artifacts production --out signed-production --key-env PADLINK_RELEASE_SIGNING_KEY
+          python3 packaging/build_release.py --version 0.0.0-fixture --artifacts fixtures --out signed-fixtures --key-env PADLINK_RELEASE_SIGNING_KEY
+          python3 packaging/build_release.py --version 0.0.1-fixture --artifacts failed-fixtures --out signed-failed-fixtures --key-env PADLINK_RELEASE_SIGNING_KEY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cli-signed-production
+          path: signed-production/
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cli-signed-fixtures
+          path: signed-fixtures/
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cli-signed-failed-fixtures
+          path: signed-failed-fixtures/
+          retention-days: 7
+
+  validate:
+    needs: [version, sign]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: cli-signed-production
+          path: production
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: cli-signed-fixtures
+          path: fixtures
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: cli-signed-failed-fixtures
+          path: failed-fixtures
+      - name: Verify installation, live update, rollback and removal without Rust
+        run: python3 packaging/smoke_install.py --release production --fixture fixtures --failed-release failed-fixtures --version ${{ needs.version.outputs.version }} --test-autostart
+
+  publish:
+    needs: [version, validate]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: cli-signed-production
+          path: dist
+      - name: Publish only the verified production release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "v$RELEASE_VERSION" dist/* --target "$GITHUB_SHA" --title "PadLink CLI $RELEASE_VERSION" --notes-file packaging/RELEASE_NOTES.md --verify-tag

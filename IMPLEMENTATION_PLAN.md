@@ -419,7 +419,9 @@ Rust and Kotlin; automatic transport migration/gameplay are future integration.
 Rust heap budgets and metrics are implemented, but aggregate RSS containment
 and pressure/backend cleanup remain open. Local Android instrumentation covers
 API 36 ARM64; Android 17 permission revocation and all-ABI physical/runtime
-coverage are not inferred. Discovery, daemon/IPC and gamepad backends are absent.
+coverage are not inferred. Private idle-daemon IPC, lifecycle, login registration,
+signed CLI installation and updates are implemented. Discovery, gameplay
+session ownership and native gamepad backends remain absent.
 See `protocol/SPEC.md` for the implemented wire contract.
 
 Phases are ordered by dependency and risk. Every PRD P0 requirement needs implementation and evidence; optional modes do not close a failed native-compatibility or hard-memory gate.
@@ -453,7 +455,8 @@ Phases are ordered by dependency and risk. Every PRD P0 requirement needs implem
 
 - [x] Implement foreground Android listener, consent/token/countdown UI, bounded socket adapters and the `padlink pair` verification command with hidden token entry/cancel, wrong-code retries and encrypted round trip.
 - [ ] Build the Kotlin/Jetpack Compose listening, device-status, consent and token screens, with actual target-SDK permission handling including Android 17 LAN permission grant/deny/revoke.
-- [ ] Implement per-user daemon lifecycle/IPC and singleton protections; CLI discovery/selection/hidden token entry/cancel/status.
+- [x] Implement per-user idle daemon lifecycle/IPC and singleton protections, status, bounded crash recovery and explicit stop.
+- [ ] Integrate CLI discovery/selection and session ownership with the daemon; standalone hidden-token pairing verification already works.
 - [ ] Implement `_padlink._tcp` mDNS, bounded IPv4 fallback, explicit subnet probe, actual endpoint display, scoped IPv6/manual connect, interface selection, and network-change callbacks.
 - [ ] Implement authenticated UDP path probing and bounded encrypted TCP fallback using the same pairing socket; test routing/firewall/port-conflict failures.
 - [ ] Build `doctor` and requested setup/firewall actions using the PRD's exact command names; output observed evidence and uncertainty.
@@ -466,7 +469,8 @@ Phases are ordered by dependency and risk. Every PRD P0 requirement needs implem
 - [ ] Implement the Kotlin custom Android View/Canvas gamepad matching the user reference in §4.7.1, with the center settings gear, correct mapping, multi-touch/cancellation, foreground/screen-on behavior, Wi-Fi locks and rate adaptation; local haptics/sensors degrade when unsupported.
 - [ ] Build the P0 Compose layout/size editor, shared rendering/hit-test geometry, move/resize controls, Apply/Cancel/Reset, app-private saved layouts, safe-area validation, and neutral input isolation/rearm. Validate against the reference and custom layouts on supported physical screens (AC-11).
 - [ ] Integrate input watchdog, backend removal, phone pause, desktop lock/suspend, fresh-epoch resume and neutral rearm.
-- [ ] Implement LaunchAgent/Scheduled Task/systemd/XDG lifecycle and signed permission attribution; verify explicit stop is not undone by supervision.
+- [x] Implement opt-in LaunchAgent/Scheduled Task/systemd/XDG login lifecycle for the idle daemon and preserve intentional stop.
+- [ ] Verify signed permission attribution and live-session login behavior when gameplay is integrated.
 - [ ] Implement bounded crash/pressure retries and no automatic trust after restart; test foreground mode on non-systemd/headless hosts.
 
 **Exit:** usable native-controller gameplay on each claimed target; unsupported targets still reported as such. Primary P0 behavior does not depend on unbuilt P1 features.

@@ -7,8 +7,9 @@ Both use the same Rust SPAKE2 handshake, bounded TCP adapters, traffic keys,
 replay protection, and memory-only session lifetime. Authenticated endpoint
 resumption rotates keys and epochs and is exposed through Rust and Android JNI.
 Android also has a local controller surface with multi-touch controls and haptic
-feedback. Discovery, daemon/IPC, input transport, and native gamepad backends
-remain future work. **Pairing verification does not open a desktop gameplay session.**
+feedback. The desktop now has per-user daemon/IPC management, installers and
+signed updates. Discovery, input transport and native gamepad backends remain
+future work. **Pairing verification does not open a desktop gameplay session.**
 
 The product requirements and engineering plan live in
 [PRD.md](PRD.md) and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). The
@@ -20,7 +21,7 @@ original product prompt is preserved at the top of the PRD.
 | :--- | :--- |
 | Android app (native Kotlin) | Wi-Fi pairing plus a local landscape View/Canvas controller with clamped recessed joysticks, darkened button press states, analog triggers, eight-way D-pad, and optional touch haptics |
 | Android tests | JVM input/haptic rules, multi-touch/render/navigation checks, Compose launch/consent/backgrounding, real JNI socket pairing/retry/encrypted exchange and authenticated resume |
-| Desktop CLI | `pair ENDPOINT --name LABEL` with hidden terminal input; protocol and heap status; explicit errors for unfinished commands |
+| Desktop CLI | Phone pairing verification, private daemon lifecycle/IPC, optional login startup, curl/PowerShell installation, verified updates and rollback |
 | Shared protocol crate | Exact codecs, RFC-vector-tested SPAKE2, bounded TCP adapters, admission/consent, AEAD/replay, fixed edge storage, clock bounds, watchdog, authenticated resume and session expiry |
 | Android native crate | Checked JNI handles; the same Rust core packaged for arm64-v8a, armeabi-v7a, x86 and x86_64 with 16 KiB ELF alignment |
 | Documentation | PRD, implementation plan, controller layout reference, protocol specification |
@@ -160,6 +161,27 @@ Controller UI validation on 2026-11-07: all 13 JVM tests and seven emulator test
 passed; the debug APK and Android lint completed successfully. Physical-device
 haptic feel and desktop gameplay are not covered by these checks.
 
+## Install the CLI
+
+macOS/Linux (run the installer only after curl succeeds):
+
+```sh
+curl --fail --location --proto '=https' --proto-redir '=https' \
+  https://github.com/sam-eer12/prod/releases/latest/download/install.sh \
+  --output /tmp/padlink-install.sh &&
+sh /tmp/padlink-install.sh --add-to-path
+```
+
+Open a new terminal, then run `padlink`, `padlink daemon start` or
+`padlink update`. `padlink update --check` checks without installing.
+`padlink autostart enable` opts into login startup; `padlink uninstall` removes
+the CLI while retaining user state. Installation starts no daemon automatically.
+
+Prebuilt targets: macOS 13+ Intel/Apple Silicon, Linux 5.4+ x64/ARM64 and
+Windows 10+ x64. macOS CLI builds need no paid Apple Developer identity.
+Windows PowerShell instructions, release trust, PATH setup and rollback are in
+[docs/CLI_DISTRIBUTION.md](docs/CLI_DISTRIBUTION.md).
+
 ## Build and run the CLI
 
 ```sh
@@ -172,9 +194,11 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-`status` reports the scaffold state and protocol revision. Commands such as
-`scan`, `connect`, `disconnect`, `doctor`, `daemon`, and `autostart` parse their
-arguments but exit with status `2` and an explicit "not implemented" message.
+`status` reports a stopped or idle daemon, its version, protocol and heap usage.
+`daemon start|stop|restart|run`, `autostart enable|disable|status`, `doctor`,
+`update` and `uninstall` are implemented. `scan` and `connect` exit with status
+`2` and an explicit "not implemented" message. `disconnect` reports no active
+gameplay session in this build.
 `pair` uses the shared core: start listening in the Android app, copy its actual
 endpoint, run this command in a terminal, tap Allow, and enter the six-character
 token. Entry is hidden; Escape/Ctrl-C cancels. Up to three attempts share the
@@ -256,7 +280,12 @@ pull requests targeting `main`, and manual runs from GitHub's Actions tab.
   Physical Wi-Fi, Bluetooth, touch latency, and gamepad backend
   compatibility still require the physical-device tests in the plan.
 
-The pipeline uploads test/lint reports and the debug APK as seven-day workflow
+Installer tooling also receives shell syntax/lint, Python syntax and publisher
+key consistency checks. The separate
+[CLI release workflow](.github/workflows/release.yml) validates native installers
+and signed upgrades on five targets before publishing a tagged production release.
+
+The CI pipeline uploads test/lint reports and the debug APK as seven-day workflow
 artifacts. It uses read-only repository permissions, dependency caches, pinned
 action revisions, and cancels superseded runs. It does not publish releases or
 require release-signing secrets.
@@ -270,7 +299,7 @@ instrumentation was exercised on an API 36 ARM64 emulator; Android 17 LAN
 grant/deny/revoke and every packaged ABI still require runtime device coverage.
 The next milestones from the implementation plan are:
 
-1. Desktop daemon/IPC and bounded discovery.
+1. Bounded discovery and integration with the implemented desktop daemon/IPC.
 2. Authenticated UDP path setup/TCP fallback and automatic resume integration,
    Android 17 permission tests, physical-device validation and security review.
 3. Connect the local controller View/Canvas to an authenticated input session
