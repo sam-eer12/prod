@@ -18,6 +18,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  packaging:
+    name: Installer and release tooling
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Check shell installer
+        run: |
+          sh -n packaging/install.sh
+          shellcheck packaging/install.sh
+      - name: Check release tools and publisher key consistency
+        run: |
+          python3 -m py_compile packaging/*.py
+          python3 packaging/check_keys.py
+
   rust:
     name: Rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
