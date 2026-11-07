@@ -28,6 +28,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.text.font.FontFamily
 import com.padlink.controller.core.PairingUiState
 import com.padlink.controller.core.PairingPhase
+import com.padlink.controller.core.BluetoothGamepadState
+import com.padlink.controller.core.BluetoothPhase
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -57,6 +59,12 @@ fun HomeScreen(
     onAllow: (Long) -> Unit = {},
     onDeny: (Long) -> Unit = {},
     onCancel: (Long) -> Unit = {},
+    bluetooth: BluetoothGamepadState = BluetoothGamepadState(),
+    onBluetoothStart: () -> Unit = {},
+    onBluetoothStop: () -> Unit = {},
+    onBluetoothDiscoverable: () -> Unit = {},
+    onBluetoothRefresh: () -> Unit = {},
+    onBluetoothConnect: (String) -> Unit = {},
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -97,7 +105,10 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            ConnectionCard(state = when (pairing.phase) {
+            BluetoothCard(bluetooth, onBluetoothStart, onBluetoothStop, onBluetoothDiscoverable,
+                onBluetoothRefresh, onBluetoothConnect, onOpenController)
+
+            if (bluetooth.phase == BluetoothPhase.OFF || pairing.phase != PairingPhase.STOPPED) ConnectionCard(state = when (pairing.phase) {
                 PairingPhase.STOPPED -> ConnectionState.NOT_CONNECTED
                 PairingPhase.LISTENING -> ConnectionState.LISTENING
                 PairingPhase.CONSENT, PairingPhase.TOKEN -> ConnectionState.PAIRING
@@ -106,6 +117,7 @@ fun HomeScreen(
             })
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(R.string.wifi_title), style = MaterialTheme.typography.titleMedium)
                     if (pairing.endpoint.isNotEmpty()) {
                         Text(stringResource(R.string.pairing_endpoint), style = MaterialTheme.typography.labelLarge)
                         Text(pairing.endpoint, fontFamily = FontFamily.Monospace)
@@ -136,7 +148,7 @@ fun HomeScreen(
                     }
                 }
             }
-            ControllerCard(onOpenController)
+            ControllerCard(onOpenController, bluetooth.phase == BluetoothPhase.CONNECTED)
         }
     }
 }
@@ -182,7 +194,7 @@ private fun ConnectionCard(state: ConnectionState) {
 }
 
 @Composable
-private fun ControllerCard(onOpenController: () -> Unit) {
+private fun ControllerCard(onOpenController: () -> Unit, connected: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -204,7 +216,9 @@ private fun ControllerCard(onOpenController: () -> Unit) {
                 text = stringResource(R.string.home_controller_body),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Button(onClick = onOpenController) { Text(stringResource(R.string.home_try_controller)) }
+            Button(onClick = onOpenController) {
+                Text(stringResource(if (connected) R.string.home_open_controller else R.string.home_try_controller))
+            }
         }
     }
 }

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
@@ -58,11 +60,18 @@ fun ControllerOrientation(active: Boolean) {
 }
 
 @Composable
-fun ControllerScreen(onSettings: () -> Unit, onClose: () -> Unit) {
+fun ControllerScreen(
+    onSettings: () -> Unit,
+    onClose: () -> Unit,
+    onInputChanged: (ControllerState) -> Unit = {},
+    connectionLabel: String? = null,
+) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val hapticsEnabled = ControllerPreferences.hapticsEnabled(context)
+    val layoutProfile = remember(context) { ControllerLayoutPreferences.load(context) }
     var usable by remember { mutableStateOf(true) }
+    var fallback by remember { mutableStateOf(false) }
     val surface = remember(context) { ControllerView(context) }
 
     DisposableEffect(surface, lifecycle) {
@@ -95,6 +104,9 @@ fun ControllerScreen(onSettings: () -> Unit, onClose: () -> Unit) {
                     it.onSettings = onSettings
                     it.onClose = onClose
                     it.hapticsEnabled = hapticsEnabled
+                    it.onInputChanged = onInputChanged
+                    it.onLayoutFallbackChanged = { value -> fallback = value }
+                    it.layoutProfile = layoutProfile
                 },
             )
             if (!usable) {
@@ -108,11 +120,15 @@ fun ControllerScreen(onSettings: () -> Unit, onClose: () -> Unit) {
                 }
             }
         }
-        Text(
-            stringResource(if (hapticsEnabled) R.string.controller_local_haptics else R.string.controller_local),
-            Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-        )
+        // Match the editor's footer so its validated geometry is identical during play.
+        Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
+            Text(
+                if (fallback) stringResource(R.string.editor_fallback)
+                else connectionLabel ?: stringResource(if (hapticsEnabled) R.string.controller_local_haptics else R.string.controller_local),
+                Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
     }
 }

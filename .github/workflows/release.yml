@@ -11,7 +11,7 @@ on:
       version:
         description: 'Version matching Cargo.toml (without v)'
         required: true
-        default: '0.1.1'
+        default: '0.1.2'
 
 permissions:
   contents: read
@@ -228,4 +228,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: |
-          gh release create "v$RELEASE_VERSION" dist/* --target "$GITHUB_SHA" --title "PadLink $RELEASE_VERSION" --notes-file packaging/RELEASE_NOTES.md --verify-tag
+          if gh release view "v$RELEASE_VERSION" >/dev/null 2>&1; then
+            gh release upload "v$RELEASE_VERSION" dist/* --clobber
+            gh release edit "v$RELEASE_VERSION" --title "PadLink $RELEASE_VERSION" --notes-file packaging/RELEASE_NOTES.md --latest
+          else
+            gh release create "v$RELEASE_VERSION" dist/* --target "$GITHUB_SHA" --title "PadLink $RELEASE_VERSION" --notes-file packaging/RELEASE_NOTES.md --verify-tag
+          fi

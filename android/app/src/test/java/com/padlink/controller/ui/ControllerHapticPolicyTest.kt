@@ -13,11 +13,11 @@ class ControllerHapticPolicyTest {
         val light = requireNotNull(policy.stickMoved(ControlId.LEFT_STICK, StickPosition(0.1f, 0f), 100))
         val edge = requireNotNull(policy.stickMoved(ControlId.LEFT_STICK, StickPosition(1f, 0f), 150))
         val button = policy.buttonPress(151)
-        assertEquals(56, light.amplitude)
-        assertEquals(110, edge.amplitude)
-        assertEquals(128, button.amplitude)
-        assertEquals(8L, light.durationMs)
-        assertEquals(18L, button.durationMs)
+        assertEquals(82, light.amplitude)
+        assertEquals(140, edge.amplitude)
+        assertEquals(170, button.amplitude)
+        assertEquals(16L, light.durationMs)
+        assertEquals(35L, button.durationMs)
         assertTrue(light.amplitude < edge.amplitude && edge.amplitude < button.amplitude)
     }
 

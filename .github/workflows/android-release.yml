@@ -19,9 +19,9 @@ on:
         description: 'Version matching Cargo.toml (without v)'
         type: string
         required: true
-        default: '0.1.1'
+        default: '0.1.2'
       publish:
-        description: 'Attach the verified APK to the existing release for this version'
+        description: 'Publish the verified APK; create an Android-only release if needed'
         type: boolean
         default: true
 
@@ -128,15 +128,20 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: android-signed-release
           path: android-dist
-      - name: Attach verified APK to the existing release
+      - name: Publish verified Android release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          gh release view "v$RELEASE_VERSION"
-          gh release upload "v$RELEASE_VERSION" android-dist/* --clobber
+          if gh release view "v$RELEASE_VERSION" >/dev/null 2>&1; then
+            gh release upload "v$RELEASE_VERSION" android-dist/* --clobber
+          else
+            gh release create "v$RELEASE_VERSION" android-dist/* --target "$GITHUB_SHA" \
+              --title "PadLink Android $RELEASE_VERSION" --notes-file packaging/ANDROID_RELEASE_NOTES.md --latest=false
+          fi

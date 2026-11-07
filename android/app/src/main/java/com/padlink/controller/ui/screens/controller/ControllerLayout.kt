@@ -70,7 +70,8 @@ class ControllerLayout private constructor(val controls: List<ControlGeometry>, 
             ControlGeometry(ControlId.CLOSE, 263f, 14f, 12f),
         )
 
-        fun fit(width: Float, height: Float, density: Float): ControllerLayout {
+        fun fit(width: Float, height: Float, density: Float,
+                profile: ControllerLayoutProfile = ControllerLayoutProfile()): ControllerLayout {
             if (width <= 0f || height <= 0f || density <= 0f ||
                 !width.isFinite() || !height.isFinite() || !density.isFinite()
             ) return ControllerLayout(emptyList(), false)
@@ -78,11 +79,13 @@ class ControllerLayout private constructor(val controls: List<ControlGeometry>, 
             val left = (width - 566f * scale) / 2f
             val top = (height - 277f * scale) / 2f
             val controls = reference.map {
+                val placement = profile.placements[it.id]?.takeIf { p -> p.valid && it.id.kind != ControlKind.ACTION }
+                val radius = it.radius * scale * (placement?.scale ?: 1f)
                 it.copy(
-                    x = left + (it.x + 20f) * scale,
-                    y = top + (it.y + 20f) * scale,
-                    radius = it.radius * scale,
-                    touchRadius = max(it.radius * scale, 24f * density),
+                    x = placement?.let { p -> p.x * width } ?: (left + (it.x + 20f) * scale),
+                    y = placement?.let { p -> p.y * height } ?: (top + (it.y + 20f) * scale),
+                    radius = radius,
+                    touchRadius = max(radius, 24f * density),
                 )
             }
             val inside = controls.all {

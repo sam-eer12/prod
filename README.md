@@ -1,15 +1,28 @@
 # PadLink
 
-PadLink turns an Android phone into a low-latency gamepad for a desktop on the
-same local network. The shared protocol and pairing core now powers a real
+PadLink turns an Android phone into a gamepad for a desktop. Direct Bluetooth
+mode uses the laptop's native HID support and needs no desktop CLI, daemon,
+or Wi-Fi connection. The phone must support Android's Bluetooth HID Device
+profile; physical phone/laptop compatibility still needs testing.
+
+The shared Wi-Fi protocol and pairing core powers a real
 Android listening/consent/token flow and the desktop `padlink pair` check.
 Both use the same Rust SPAKE2 handshake, bounded TCP adapters, traffic keys,
 replay protection, and memory-only session lifetime. Authenticated endpoint
 resumption rotates keys and epochs and is exposed through Rust and Android JNI.
-Android also has a local controller surface with multi-touch controls and haptic
-feedback. The desktop now has per-user daemon/IPC management, installers and
-signed updates. Discovery, input transport and native gamepad backends remain
-future work. **Pairing verification does not open a desktop gameplay session.**
+Android also has a local controller surface with multi-touch controls, haptic
+feedback, and an on-device layout editor. The desktop has per-user daemon/IPC
+management, installers and
+signed updates. Wi-Fi gameplay transport and native desktop backends remain
+deferred. **Wi-Fi pairing verification does not open a desktop gameplay session.**
+
+## Play through Bluetooth
+
+Install the signed Android APK from [GitHub Releases](https://github.com/sam-eer12/prod/releases).
+Tap **Start Bluetooth**, allow nearby-device access, then **Make discoverable**
+and pair your phone in the laptop's Bluetooth settings. Keep PadLink open.
+For an already-paired laptop, use **Connect to**. The controller opens when connected.
+See [docs/BLUETOOTH_GAMEPAD.md](docs/BLUETOOTH_GAMEPAD.md) for controls and testing.
 
 The product requirements and engineering plan live in
 [PRD.md](PRD.md) and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). The
@@ -62,7 +75,7 @@ checksum. Release automation and signing configuration are documented in
 
 | Area | Status |
 | :--- | :--- |
-| Android app (native Kotlin) | Wi-Fi pairing plus a local landscape View/Canvas controller with clamped recessed joysticks, darkened button press states, analog triggers, eight-way D-pad, and optional touch haptics |
+| Android app (native Kotlin) | Direct Bluetooth HID gamepad with background resume, Wi-Fi pairing check, multi-touch landscape controls, touch haptics, and an on-device layout editor |
 | Android tests | JVM input/haptic rules, multi-touch/render/navigation checks, Compose launch/consent/backgrounding, real JNI socket pairing/retry/encrypted exchange and authenticated resume |
 | Desktop CLI | Phone pairing verification, private daemon lifecycle/IPC, optional login startup, curl/PowerShell installation, verified updates and rollback |
 | Shared protocol crate | Exact codecs, RFC-vector-tested SPAKE2, bounded TCP adapters, admission/consent, AEAD/replay, fixed edge storage, clock bounds, watchdog, authenticated resume and session expiry |
@@ -176,23 +189,34 @@ GitHub Actions signs and verifies it using the repository's Android signing secr
   network loss/address change, or cancellation closes the channel and clears
   token/session material. Listener restart keeps phone-wide request limits.
 - Pairing tokens are excluded from screenshots/task previews and saved UI state.
-- **Try controller** opens the reference landscape layout locally and stops any
-  pairing flow. Both sticks track independently, keep their entire caps inside
+- **Start Bluetooth** registers a gamepad-only HID profile, checks permissions
+  and profile availability, and connects to a paired laptop. No desktop software
+  is required. Backgrounding clears controls and unregisters the profile;
+  returning restores the screen and reconnects to the same bonded laptop.
+  Close, Stop Bluetooth, or failure ends the session. Settings and layout editing
+  keep a connected gamepad neutral.
+- **Try controller** opens the reference landscape layout locally; **Open controller**
+  uses an active Bluetooth connection. Both sticks track independently, keep their entire caps inside
   the outer rings, and recenter on release. Face/shoulder/stick-click buttons
   darken while pressed. D-pad slides support diagonals; LT/RT taps fully pull and
   downward drags feather their values, returning to zero on release.
-- Joystick movement emits short low-to-medium haptic pulses (50–110/255 amplitude,
-  8 ms, at most once per 50 ms across both sticks). Buttons emit medium pulses
-  (128/255, 18 ms). Stationary sticks do not vibrate. Devices without amplitude
-  control use optional system touch effects; the phone's touch-feedback setting
+- Joystick movement emits short low-to-medium haptic pulses (75–140/255 amplitude,
+  16 ms, at most once per 50 ms across both sticks). Buttons emit medium pulses
+  (170/255, 35 ms). Stationary sticks do not vibrate. Devices without amplitude
+  control use direct effects at the motor's default amplitude; the phone's touch-feedback setting
   and the app's persisted **Touch feedback** switch are respected. Actual feel
   must be checked on a physical phone.
 - Controller settings, closing, focus loss, backgrounding, resizing, and cancelled
   touches clear input and stop haptics. Controls use safe-area geometry and at
   least 48 dp touch targets; windows that cannot fit them remain neutral.
-- Settings show app information, local controller status, and touch feedback.
+- Settings show app information, controller status, a vibration test, and touch feedback.
   The gear opens settings and returns to a neutral controller. Nothing sends
-  gamepad input to the desktop yet; layout editing remains future work.
+  Wi-Fi gamepad input to the desktop yet; Bluetooth sends gamepad input directly.
+- **Edit layout** moves and resizes gameplay controls with drag gestures or
+  accessible adjustment buttons. Save applies locally; Cancel discards the draft;
+  Reset restores defaults after Save. Validation preserves bounds, separate
+  48 dp touch circles, and fixed Settings/Close anchors. Backgrounding and
+  activity recreation retain the current screen and unsaved editor draft.
 - Debug builds use the application ID `com.padlink.controller.debug` so they can
   coexist with a release install later.
 
@@ -200,9 +224,11 @@ Controller previews captured from the Android View on an API 36 emulator:
 [idle](docs/previews/controller-idle.png),
 [dragged stick with A held](docs/previews/controller-dragged.png), and
 [B pressed](docs/previews/controller-pressed.png).
-Controller UI validation on 2026-11-07: all 13 JVM tests and seven emulator tests
-passed; the debug APK and Android lint completed successfully. Physical-device
-haptic feel and desktop gameplay are not covered by these checks.
+App validation on 2026-11-07: all 23 JVM tests and 13 emulator tests passed,
+including HID report mapping, layout persistence/validation, neutral editor
+input, and background/activity restoration. Debug and unsigned release builds
+and Android lint completed successfully. Physical Bluetooth recognition,
+game compatibility, and vibration feel are not covered by these checks.
 
 ## Build and run the CLI
 
@@ -315,8 +341,9 @@ require release-signing secrets.
 ## Scope note
 
 The pinned PAKE has no weaker authentication fallback. The app and CLI can
-verify pairing now; live gameplay and automatic transport migration are not
-enabled. No aggregate memory ceiling or game compatibility is claimed. Local
+verify Wi-Fi pairing now; Wi-Fi gameplay and automatic transport migration are
+not enabled. Direct Bluetooth gameplay is available for physical-device testing.
+No aggregate memory ceiling or game compatibility is claimed. Local
 instrumentation was exercised on an API 36 ARM64 emulator; Android 17 LAN
 grant/deny/revoke and every packaged ABI still require runtime device coverage.
 The next milestones from the implementation plan are:
@@ -324,8 +351,7 @@ The next milestones from the implementation plan are:
 1. Bounded discovery and integration with the implemented desktop daemon/IPC.
 2. Authenticated UDP path setup/TCP fallback and automatic resume integration,
    Android 17 permission tests, physical-device validation and security review.
-3. Connect the local controller View/Canvas to an authenticated input session
-   and add the Compose layout editor.
+3. Connect the controller View/Canvas to an authenticated Wi-Fi input session.
 
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full P0/P1 gates and
 acceptance criteria.

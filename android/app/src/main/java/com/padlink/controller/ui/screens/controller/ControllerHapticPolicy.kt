@@ -12,7 +12,7 @@ class ControllerHapticPolicy {
 
     fun buttonPress(now: Long): TouchPulse {
         lastPulseAt = now
-        return TouchPulse(18L, 128, button = true)
+        return TouchPulse(35L, 170, button = true)
     }
 
     fun stickMoved(id: ControlId, position: StickPosition, now: Long): TouchPulse? {
@@ -22,7 +22,7 @@ class ControllerHapticPolicy {
         if (now - lastPulseAt < 50L) return null
         lastPulseAt = now
         lastPositions[id] = position
-        return TouchPulse(8L, (50 + 60 * position.magnitude.coerceIn(0f, 1f)).roundToInt(), button = false)
+        return TouchPulse(16L, (75 + 65 * position.magnitude.coerceIn(0f, 1f)).roundToInt(), button = false)
     }
 
     fun releaseStick(id: ControlId) { lastPositions.remove(id) }

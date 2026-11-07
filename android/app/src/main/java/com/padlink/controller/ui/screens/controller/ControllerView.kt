@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.toArgb
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.roundToInt
+import kotlin.math.max
 
 /** Gameplay rendering and multi-touch stay on the View, outside Compose recomposition. */
 class ControllerView(context: Context) : View(context) {
@@ -35,6 +36,33 @@ class ControllerView(context: Context) : View(context) {
     var onClose: () -> Unit = {}
     var onInputChanged: (ControllerState) -> Unit = {}
     var onLayoutUsableChanged: (Boolean) -> Unit = {}
+    var onLayoutFallbackChanged: (Boolean) -> Unit = {}
+    var onEditSelection: (ControlId) -> Unit = {}
+    var onEditChanged: (ControllerLayoutProfile) -> Unit = {}
+    var editing: Boolean = false
+        set(value) {
+            if (field == value) return
+            resetInput()
+            field = value
+            rebuildLayout()
+        }
+    var layoutProfile: ControllerLayoutProfile = ControllerLayoutProfile()
+        set(value) {
+            if (field == value) return
+            resetInput()
+            field = value
+            rebuildLayout()
+        }
+    var selectedControl: ControlId = ControlId.LEFT_STICK
+        set(value) {
+            if (field == value) return
+            field = value
+            accessibility.invalidateRoot()
+            invalidate()
+        }
+    private var editPointer = -1
+    private var editOffsetX = 0f
+    private var editOffsetY = 0f
     var hapticsEnabled: Boolean
         get() = haptics.enabled
         set(value) { haptics.enabled = value }
@@ -89,16 +117,24 @@ class ControllerView(context: Context) : View(context) {
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        rebuildLayout()
+    }
+
+    private fun rebuildLayout() {
         resetInput()
-        controllerLayout = ControllerLayout.fit(w.toFloat(), h.toFloat(), resources.displayMetrics.density)
+        val requested = ControllerLayout.fit(width.toFloat(), height.toFloat(), resources.displayMetrics.density, layoutProfile)
+        val fallback = !editing && !requested.usable && layoutProfile.placements.isNotEmpty()
+        controllerLayout = if (fallback) ControllerLayout.fit(width.toFloat(), height.toFloat(), resources.displayMetrics.density) else requested
         art = controllerLayout.controls.associate { it.id to Artwork(it.radius) }
         onLayoutUsableChanged(controllerLayout.usable)
+        onLayoutFallbackChanged(fallback)
         accessibility.invalidateRoot()
+        invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (!controllerLayout.usable) return
+        if (!controllerLayout.usable && !editing) return
         val state = input.state
         controllerLayout.controls.forEach { control ->
             val artwork = art.getValue(control.id)
@@ -113,6 +149,15 @@ class ControllerView(context: Context) : View(context) {
                 drawLabel(canvas, control, pressed, state)
             }
             canvas.restore()
+            if (editing) {
+                paint.shader = null
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 2f * resources.displayMetrics.density
+                paint.color = if (control.id != selectedControl) 0x408F969C
+                    else if (controllerLayout.usable) OffWhite.toArgb() else 0xFFFFC267.toInt()
+                canvas.drawCircle(control.x, control.y, control.touchRadius, paint)
+                paint.style = Paint.Style.FILL
+            }
         }
     }
 
@@ -269,6 +314,7 @@ class ControllerView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (editing) return editTouch(event)
         if (!controllerLayout.usable) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
@@ -312,6 +358,54 @@ class ControllerView(context: Context) : View(context) {
         onInputChanged(input.state)
         invalidate()
         return true
+    }
+
+    /** Editor gestures never reach ControllerInput or the Bluetooth input callback. */
+    private fun editTouch(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val control = controllerLayout.controls.lastOrNull {
+                    it.id.kind != ControlKind.ACTION && it.contains(event.x, event.y)
+                } ?: return true
+                selectedControl = control.id
+                onEditSelection(control.id)
+                editPointer = event.getPointerId(0)
+                editOffsetX = event.x - control.x
+                editOffsetY = event.y - control.y
+                parent?.requestDisallowInterceptTouchEvent(true)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val index = event.findPointerIndex(editPointer)
+                if (index >= 0) placeControl(selectedControl, event.getX(index) - editOffsetX, event.getY(index) - editOffsetY)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                editPointer = -1
+                parent?.requestDisallowInterceptTouchEvent(false)
+                if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
+            }
+            MotionEvent.ACTION_POINTER_UP -> if (event.getPointerId(event.actionIndex) == editPointer) editPointer = -1
+        }
+        return true
+    }
+
+    fun adjustSelected(dxDp: Float = 0f, dyDp: Float = 0f, scale: Float? = null) {
+        if (!editing || controllerLayout.controls.isEmpty()) return
+        val g = controllerLayout[selectedControl]
+        val density = resources.displayMetrics.density
+        placeControl(selectedControl, g.x + dxDp * density, g.y + dyDp * density, scale)
+    }
+
+    private fun placeControl(id: ControlId, x: Float, y: Float, scale: Float? = null) {
+        if (!editing || id.kind == ControlKind.ACTION || width <= 0 || height <= 0) return
+        val g = controllerLayout[id]
+        val oldScale = layoutProfile.placements[id]?.scale ?: 1f
+        val newScale = (scale ?: oldScale).coerceIn(0.65f, 1.65f)
+        val target = max(g.radius / oldScale * newScale, 24f * resources.displayMetrics.density)
+        if (target * 2 > width || target * 2 > height) return
+        val placement = ControlPlacement(x.coerceIn(target, width - target) / width,
+            y.coerceIn(target, height - target) / height, newScale)
+        layoutProfile = layoutProfile.with(id, placement)
+        onEditChanged(layoutProfile)
     }
 
     private fun feedbackForStick(id: ControlId) {
@@ -367,10 +461,12 @@ class ControllerView(context: Context) : View(context) {
 
     private inner class ControllerAccessibility(host: View) : ExploreByTouchHelper(host) {
         override fun getVirtualViewAt(x: Float, y: Float): Int =
-            controllerLayout.hitTest(x, y)?.id?.ordinal ?: INVALID_ID
+            if (editing) controllerLayout.controls.lastOrNull { it.id.kind != ControlKind.ACTION && it.contains(x, y) }?.id?.ordinal ?: INVALID_ID
+            else controllerLayout.hitTest(x, y)?.id?.ordinal ?: INVALID_ID
 
         override fun getVisibleVirtualViews(virtualViewIds: MutableList<Int>) {
-            if (controllerLayout.usable) controllerLayout.controls.forEach { virtualViewIds.add(it.id.ordinal) }
+            if (controllerLayout.usable || editing) controllerLayout.controls.filter { !editing || it.id.kind != ControlKind.ACTION }
+                .forEach { virtualViewIds.add(it.id.ordinal) }
         }
 
         @Suppress("DEPRECATION") // ExploreByTouchHelper requires parent bounds to derive screen bounds.
@@ -384,6 +480,14 @@ class ControllerView(context: Context) : View(context) {
             node.isFocusable = true
             node.setBoundsInParent(Rect((g.x - g.touchRadius).toInt(), (g.y - g.touchRadius).toInt(),
                 (g.x + g.touchRadius).toInt(), (g.y + g.touchRadius).toInt()))
+            if (editing) {
+                node.className = "android.widget.Button"
+                node.isClickable = true
+                node.isSelected = selectedControl == id
+                node.stateDescription = "Select to move or resize."
+                node.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
+                return
+            }
             if (directional) {
                 node.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat(
                     AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_SCROLL_UP.id, "Move up"))
@@ -411,8 +515,15 @@ class ControllerView(context: Context) : View(context) {
         }
 
         override fun onPerformActionForVirtualView(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
-            if (!controllerLayout.usable) return false
             val id = ControlId.entries.getOrNull(virtualViewId) ?: return false
+            if (editing) {
+                if (id.kind == ControlKind.ACTION || action != AccessibilityNodeInfoCompat.ACTION_CLICK) return false
+                selectedControl = id
+                onEditSelection(id)
+                sendEventForVirtualView(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
+                return true
+            }
+            if (!controllerLayout.usable) return false
             if (id.kind == ControlKind.ACTION && action == AccessibilityNodeInfoCompat.ACTION_CLICK) {
                 haptics.buttonPress()
                 activateAction(id)

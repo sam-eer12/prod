@@ -7,4 +7,5 @@ enum class AppDestination {
     HOME,
     SETTINGS,
     CONTROLLER,
+    LAYOUT_EDITOR,
 }

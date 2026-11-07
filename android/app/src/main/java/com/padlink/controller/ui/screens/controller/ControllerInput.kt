@@ -15,7 +15,7 @@ data class StickPosition(val x: Float = 0f, val y: Float = 0f) {
     }
 }
 
-/** Local state only. A future session owner can consume changes without Compose per-frame work. */
+/** Touch state consumed directly by the controller sender without Compose per-frame work. */
 data class ControllerState(
     val buttons: Int = 0,
     val leftStick: StickPosition = StickPosition(),

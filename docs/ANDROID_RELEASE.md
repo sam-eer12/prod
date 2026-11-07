@@ -47,15 +47,15 @@ Only the verified APK, checksum, and test reports are uploaded as artifacts.
 
 The standalone `Android release` workflow also supports manual runs. It builds
 the selected workflow ref, checks its version against `Cargo.toml`, and attaches
-the verified APK and checksum to an existing `vVERSION` release. It leaves the
-desktop release assets intact.
+the verified APK and checksum to an existing `vVERSION` release. If absent, it
+creates an Android-only release without changing GitHub's latest CLI release.
+It leaves existing desktop release assets intact.
 
 ```sh
-gh workflow run android-release.yml --repo sam-eer12/prod --ref main -f version=0.1.1 -f publish=true
+gh workflow run android-release.yml --repo sam-eer12/prod --ref main -f version=0.1.2 -f publish=true
 ```
 
 Set `publish=false` to build and verify an Actions artifact without publishing.
-Manual publication requires the corresponding GitHub Release to exist already.
 Rerunning publication replaces the APK and checksum with the same filenames.
 Local `:app:assembleRelease` remains unsigned; production signing is performed by
 `packaging/sign_android_release.py` after assembly.

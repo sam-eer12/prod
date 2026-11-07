@@ -39,6 +39,15 @@ class MainActivityTest {
     }
 
     @Test
+    fun bluetoothModeShowsDirectConnectionWithoutDesktopSoftware() {
+        composeRule.onNodeWithText("Bluetooth gamepad").assertIsDisplayed()
+        composeRule.onNodeWithText("Connect directly to your laptop. No desktop app or Wi-Fi needed.").assertIsDisplayed()
+        composeRule.onNodeWithText("Start Bluetooth").assertIsDisplayed()
+        val app = composeRule.activity.application as PadLinkApplication
+        org.junit.Assert.assertEquals(com.padlink.controller.core.BluetoothPhase.OFF, app.bluetoothGamepad.state.value.phase)
+    }
+
+    @Test
     fun realConsentButtonIssuesTokenAndBackgroundingStopsListener() {
         val model = ViewModelProvider(composeRule.activity)[PairingViewModel::class.java]
         model.start(requireNotNull(wifiPairingEndpoint(composeRule.activity)))
