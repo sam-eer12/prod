@@ -6,8 +6,9 @@ Android listening/consent/token flow and the desktop `padlink pair` check.
 Both use the same Rust SPAKE2 handshake, bounded TCP adapters, traffic keys,
 replay protection, and memory-only session lifetime. Authenticated endpoint
 resumption rotates keys and epochs and is exposed through Rust and Android JNI.
-Discovery, daemon/IPC, controller input, and native gamepad backends remain future
-work. **Pairing verification does not open a playable controller session.**
+Android also has a local controller surface with multi-touch controls and haptic
+feedback. Discovery, daemon/IPC, input transport, and native gamepad backends
+remain future work. **Pairing verification does not open a desktop gameplay session.**
 
 The product requirements and engineering plan live in
 [PRD.md](PRD.md) and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). The
@@ -17,8 +18,8 @@ original product prompt is preserved at the top of the PRD.
 
 | Area | Status |
 | :--- | :--- |
-| Android app (native Kotlin) | Wi-Fi listening, actual endpoint display, Allow/Deny, six-character token/countdown, cancellation, disconnect and lifecycle cleanup |
-| Android tests | JVM rules, Compose launch/consent/backgrounding, real JNI socket pairing/retry/encrypted exchange and authenticated resume |
+| Android app (native Kotlin) | Wi-Fi pairing plus a local landscape View/Canvas controller with clamped recessed joysticks, darkened button press states, analog triggers, eight-way D-pad, and optional touch haptics |
+| Android tests | JVM input/haptic rules, multi-touch/render/navigation checks, Compose launch/consent/backgrounding, real JNI socket pairing/retry/encrypted exchange and authenticated resume |
 | Desktop CLI | `pair ENDPOINT --name LABEL` with hidden terminal input; protocol and heap status; explicit errors for unfinished commands |
 | Shared protocol crate | Exact codecs, RFC-vector-tested SPAKE2, bounded TCP adapters, admission/consent, AEAD/replay, fixed edge storage, clock bounds, watchdog, authenticated resume and session expiry |
 | Android native crate | Checked JNI handles; the same Rust core packaged for arm64-v8a, armeabi-v7a, x86 and x86_64 with 16 KiB ELF alignment |
@@ -131,10 +132,33 @@ release task produces an unsigned APK.
   network loss/address change, or cancellation closes the channel and clears
   token/session material. Listener restart keeps phone-wide request limits.
 - Pairing tokens are excluded from screenshots/task previews and saved UI state.
-- Settings: app version, build type, package name, and the current controller
-  status. Nothing sends gamepad input.
+- **Try controller** opens the reference landscape layout locally and stops any
+  pairing flow. Both sticks track independently, keep their entire caps inside
+  the outer rings, and recenter on release. Face/shoulder/stick-click buttons
+  darken while pressed. D-pad slides support diagonals; LT/RT taps fully pull and
+  downward drags feather their values, returning to zero on release.
+- Joystick movement emits short low-to-medium haptic pulses (50–110/255 amplitude,
+  8 ms, at most once per 50 ms across both sticks). Buttons emit medium pulses
+  (128/255, 18 ms). Stationary sticks do not vibrate. Devices without amplitude
+  control use optional system touch effects; the phone's touch-feedback setting
+  and the app's persisted **Touch feedback** switch are respected. Actual feel
+  must be checked on a physical phone.
+- Controller settings, closing, focus loss, backgrounding, resizing, and cancelled
+  touches clear input and stop haptics. Controls use safe-area geometry and at
+  least 48 dp touch targets; windows that cannot fit them remain neutral.
+- Settings show app information, local controller status, and touch feedback.
+  The gear opens settings and returns to a neutral controller. Nothing sends
+  gamepad input to the desktop yet; layout editing remains future work.
 - Debug builds use the application ID `com.padlink.controller.debug` so they can
   coexist with a release install later.
+
+Controller previews captured from the Android View on an API 36 emulator:
+[idle](docs/previews/controller-idle.png),
+[dragged stick with A held](docs/previews/controller-dragged.png), and
+[B pressed](docs/previews/controller-pressed.png).
+Controller UI validation on 2026-11-07: all 13 JVM tests and seven emulator tests
+passed; the debug APK and Android lint completed successfully. Physical-device
+haptic feel and desktop gameplay are not covered by these checks.
 
 ## Build and run the CLI
 
@@ -249,7 +273,8 @@ The next milestones from the implementation plan are:
 1. Desktop daemon/IPC and bounded discovery.
 2. Authenticated UDP path setup/TCP fallback and automatic resume integration,
    Android 17 permission tests, physical-device validation and security review.
-3. Custom multi-touch controller View/Canvas and the Compose layout editor.
+3. Connect the local controller View/Canvas to an authenticated input session
+   and add the Compose layout editor.
 
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full P0/P1 gates and
 acceptance criteria.

@@ -7,8 +7,13 @@
 
     <string name="home_headline">Your phone. Your controller.</string>
     <string name="home_body">Connect your phone and desktop to the same Wi-Fi network. Start listening, then approve the desktop and enter the code there.</string>
-    <string name="home_next_title">Next milestone</string>
-    <string name="home_next_body">Pairing is ready to test. Controller controls, device discovery, and the layout editor are coming next.</string>
+    <string name="home_controller_title">Feel the controls</string>
+    <string name="home_controller_body">Try the joysticks, buttons, and touch feedback. This local controller does not send input to your desktop yet. Opening it stops pairing.</string>
+    <string name="home_try_controller">Try controller</string>
+    <string name="controller_local_haptics">Local controller · Touch feedback on</string>
+    <string name="controller_local">Local controller · Touch feedback off</string>
+    <string name="controller_close">Close controller</string>
+    <string name="controller_window_small">Rotate your phone or use a larger window to fit the controls.</string>
 
     <string name="status_not_connected">Not connected</string>
     <string name="status_not_connected_detail">Start listening to receive a desktop connection request.</string>
@@ -28,10 +33,12 @@
     <string name="settings_package">Package</string>
     <string name="settings_controller">Controller</string>
     <string name="settings_layout">Default layout</string>
-    <string name="settings_layout_value">Reference layout — editor not implemented</string>
+    <string name="settings_layout_value">Reference layout</string>
     <string name="settings_input">Touch input</string>
-    <string name="settings_input_value">Not wired yet</string>
-    <string name="settings_note">Pairing is available. Controller controls and layout editing are coming next.</string>
+    <string name="settings_input_value">Local multi-touch</string>
+    <string name="settings_haptics">Touch feedback</string>
+    <string name="settings_haptics_detail">Low to medium on joystick movement. Medium on button presses. Follows your phone’s touch feedback setting.</string>
+    <string name="settings_note">Try the controller locally from the home screen. Desktop gameplay and layout editing are coming next.</string>
     <string name="pairing_endpoint">Phone address</string>
     <string name="pairing_start">Start listening</string>
     <string name="pairing_stop">Stop listening</string>
