@@ -134,11 +134,13 @@ pub fn enable(state: &Path, executable: &Path) -> io::Result<()> {
         let sid = local::user_sid()?;
         let arguments = format!("--state-dir {} daemon run", windows_quote(state_text));
         let contents = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\"><RegistrationInfo><Description>PadLink managed background daemon</Description></RegistrationInfo><Triggers><LogonTrigger><Enabled>true</Enabled><UserId>{sid}</UserId></LogonTrigger></Triggers><Principals><Principal id=\"User\"><UserId>{sid}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals><Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><Enabled>true</Enabled></Settings><Actions Context=\"User\"><Exec><Command>{}</Command><Arguments>{}</Arguments></Exec></Actions></Task>",
+            "<?xml version=\"1.0\" encoding=\"UTF-16\"?><Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\"><RegistrationInfo><Description>PadLink managed background daemon</Description></RegistrationInfo><Triggers><LogonTrigger><Enabled>true</Enabled><UserId>{sid}</UserId></LogonTrigger></Triggers><Principals><Principal id=\"User\"><UserId>{sid}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals><Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><Enabled>true</Enabled></Settings><Actions Context=\"User\"><Exec><Command>{}</Command><Arguments>{}</Arguments></Exec></Actions></Task>",
             xml(executable),
             xml(&arguments)
         );
-        managed_write(&path, contents.as_bytes())?;
+        let mut encoded = vec![0xff, 0xfe];
+        encoded.extend(contents.encode_utf16().flat_map(u16::to_le_bytes));
+        managed_write(&path, &encoded)?;
         let status = Command::new("schtasks.exe")
             .args(["/Create", "/TN", &task_name()?, "/XML"])
             .arg(&path)
@@ -170,14 +172,32 @@ fn managed_write(path: &Path, contents: &[u8]) -> io::Result<()> {
             return Err(io::Error::other("startup entry must be a regular file"));
         }
         let existing = fs::read(path)?;
-        if existing.len() > 65536 || !String::from_utf8_lossy(&existing).contains("PadLink managed")
-        {
+        if !managed_marker(&existing) {
             return Err(io::Error::other(
                 "refusing to replace a startup entry not managed by PadLink",
             ));
         }
     }
     local::atomic_write(path, contents)
+}
+
+fn managed_marker(bytes: &[u8]) -> bool {
+    if bytes.len() > 65536 {
+        return false;
+    }
+    if bytes.starts_with(&[0xff, 0xfe]) {
+        if !bytes.len().is_multiple_of(2) {
+            return false;
+        }
+        let units: Vec<_> = bytes[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        return String::from_utf16_lossy(&units).contains("PadLink managed");
+    }
+    String::from_utf8_lossy(bytes).contains("PadLink managed")
 }
 
 pub fn disable(state: &Path) -> io::Result<()> {
@@ -231,7 +251,7 @@ pub fn disable(state: &Path) -> io::Result<()> {
         local::check_owner(&metadata)?;
         if !metadata.is_file()
             || metadata.file_type().is_symlink()
-            || !String::from_utf8_lossy(&fs::read(&allowed)?).contains("PadLink managed")
+            || !managed_marker(&fs::read(&allowed)?)
         {
             return Err(io::Error::other(
                 "refusing to remove an unmanaged startup entry",
@@ -316,6 +336,17 @@ fn task_name() -> io::Result<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn managed_markers_support_task_scheduler_utf16_and_unix_utf8() {
+        let text = "PadLink managed background daemon";
+        assert!(super::managed_marker(text.as_bytes()));
+        let mut encoded = vec![0xff, 0xfe];
+        encoded.extend(text.encode_utf16().flat_map(u16::to_le_bytes));
+        assert!(super::managed_marker(&encoded));
+        encoded.push(0);
+        assert!(!super::managed_marker(&encoded));
+        assert!(!super::managed_marker(b"Unrelated user configuration"));
+    }
     #[test]
     fn xml_cannot_inject_extra_arguments() {
         assert_eq!(super::xml("a&<\"'"), "a&amp;&lt;&quot;&apos;");
