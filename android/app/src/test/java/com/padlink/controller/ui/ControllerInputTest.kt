@@ -108,6 +108,8 @@ class ControllerInputTest {
             }
         }
         assertFalse(ControllerLayout.fit(320f, 220f, 1f).usable)
+        // Generic CI AVD in landscape, after the shared 48 dp footer.
+        assertFalse(ControllerLayout.fit(640f, 272f, 1f).usable)
         assertNull(ControllerLayout.fit(320f, 220f, 1f).hitTest(100f, 100f))
         assertFalse(ControllerLayout.fit(Float.NaN, 220f, 1f).usable)
     }

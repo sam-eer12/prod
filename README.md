@@ -324,7 +324,8 @@ pull requests targeting `main`, and manual runs from GitHub's Actions tab.
 - **Android:** Java 17, Rust Android targets, NDK 28.2.13676358, the Gradle wrapper, Android SDK 37, unit
   tests, lint, debug and unsigned release builds, and instrumentation-test
   compilation.
-- **Android emulator:** executes Compose and JNI pairing/resume tests on API 35.
+- **Android emulator:** executes Compose and JNI pairing/resume tests on an API 35
+  Pixel 7 profile, with enough room for the controller's 48 dp touch targets.
   Physical Wi-Fi, Bluetooth, touch latency, and gamepad backend
   compatibility still require the physical-device tests in the plan.
 

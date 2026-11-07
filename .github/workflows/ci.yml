@@ -149,6 +149,8 @@ jobs:
           api-level: 35
           target: google_apis
           arch: x86_64
+          # The generic 320 x 640 AVD cannot fit the controller's 48 dp targets.
+          profile: pixel_7
           disable-animations: true
           emulator-boot-timeout: 600
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
