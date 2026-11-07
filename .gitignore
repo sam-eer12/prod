@@ -13,6 +13,7 @@ android/.gradle/
 android/.kotlin/
 android/build/
 android/app/build/
+android/app/release/*
 android/captures/
 android/.cxx/
 *.apk
