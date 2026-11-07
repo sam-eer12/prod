@@ -97,7 +97,7 @@ archive=$3; bytes=$4; checksum=$5; entry=$9; url=${10}
 [ "$entry" = padlink ] || fail 'unexpected binary filename'
 [ "$url" = "https://github.com/$repository/releases/download/v$published/$archive" ] || fail 'unexpected artifact origin'
 case "$bytes" in *[!0-9]*|'') fail 'invalid archive size';; esac
-[ "$bytes" -gt 0 ] && [ "$bytes" -le 32000000 ] || fail 'archive exceeds size limits'
+if [ "$bytes" -le 0 ] || [ "$bytes" -gt 32000000 ]; then fail 'archive exceeds size limits'; fi
 if [ -n "$source_folder" ]; then cp "$source_folder/$archive" "$stage/$archive"; else fetch "$url" "$stage/$archive" "$bytes" || fail 'archive download failed'; fi
 [ "$(wc -c < "$stage/$archive")" -eq "$bytes" ] || fail 'archive size verification failed'
 actual=$(openssl dgst -sha256 -r "$stage/$archive" | awk '{print $1}')

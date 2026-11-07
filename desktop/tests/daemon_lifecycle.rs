@@ -1,4 +1,3 @@
-#[cfg(unix)]
 use std::time::Instant;
 use std::{
     fs,
@@ -34,12 +33,30 @@ impl Sandbox {
         }
     }
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_padlink"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_padlink"))
             .arg("--state-dir")
             .arg(&self.state)
             .args(args)
-            .output()
-            .unwrap()
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            if child.try_wait().unwrap().is_some() {
+                return child.wait_with_output().unwrap();
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let mut output = child.wait_with_output().unwrap();
+                output
+                    .stderr
+                    .extend_from_slice(b"\nCLI exceeded the 15-second test deadline\n");
+                return output;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
     fn ok(&self, args: &[&str]) -> Output {
         let output = self.run(args);
@@ -56,13 +73,7 @@ impl Sandbox {
 }
 impl Drop for Sandbox {
     fn drop(&mut self) {
-        let _ = Command::new(env!("CARGO_BIN_EXE_padlink"))
-            .arg("--state-dir")
-            .arg(&self.state)
-            .args(["daemon", "stop"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        let _ = self.run(&["daemon", "stop"]);
         let _ = fs::remove_dir_all(&self.root);
     }
 }

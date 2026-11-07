@@ -2,7 +2,7 @@
 use crate::local;
 use fs2::FileExt;
 use interprocess::local_socket::{
-    Listener, ListenerNonblockingMode, ListenerOptions, Name, Stream, prelude::*,
+    ConnectOptions, Listener, ListenerNonblockingMode, ListenerOptions, Name, Stream, prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -105,11 +105,16 @@ fn listener(state: &Path) -> io::Result<Listener> {
 }
 
 pub fn rpc(state: &Path, op: &str) -> io::Result<Vec<u8>> {
-    let mut stream = Stream::connect(socket_name(state)?)?;
+    let deadline = Instant::now() + TIMEOUT;
+    let stream = ConnectOptions::new()
+        .name(socket_name(state)?)
+        .wait_mode(interprocess::ConnectWaitMode::Timeout(TIMEOUT))
+        .nonblocking_stream(true)
+        .connect_sync()?;
+    let mut stream = RpcStream(stream);
     authorize_peer(&stream)?;
     stream.set_nonblocking(true)?;
     let request = serde_json::to_vec(&serde_json::json!({"op": op})).map_err(io::Error::other)?;
-    let deadline = Instant::now() + TIMEOUT;
     let mut sent = 0;
     let mut frame = request;
     frame.push(b'\n');
@@ -146,6 +151,28 @@ pub fn rpc(state: &Path, op: &str) -> io::Result<Vec<u8>> {
     }
 }
 
+struct RpcStream(Stream);
+impl std::ops::Deref for RpcStream {
+    type Target = Stream;
+    fn deref(&self) -> &Stream {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for RpcStream {
+    fn deref_mut(&mut self) -> &mut Stream {
+        &mut self.0
+    }
+}
+#[cfg(windows)]
+impl Drop for RpcStream {
+    fn drop(&mut self) {
+        let Stream::NamedPipe(pipe) = &self.0;
+        // Every RPC is acknowledged or abandoned by its deadline. A vanished
+        // server must not retain an unbounded client-side flush worker.
+        pipe.inner().assume_flushed();
+    }
+}
+
 fn pause(deadline: Instant) -> io::Result<()> {
     if Instant::now() >= deadline {
         return Err(io::Error::new(
@@ -165,7 +192,11 @@ pub fn status(state: &Path) -> io::Result<Option<Status>> {
         Err(e)
             if matches!(
                 e.kind(),
-                io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+                io::ErrorKind::NotFound
+                    | io::ErrorKind::ConnectionRefused
+                    | io::ErrorKind::ConnectionReset
+                    | io::ErrorKind::BrokenPipe
+                    | io::ErrorKind::UnexpectedEof
             ) =>
         {
             Ok(None)
