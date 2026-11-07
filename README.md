@@ -53,6 +53,11 @@ Windows 10+ x64. macOS CLI builds need no paid Apple Developer identity.
 Windows PowerShell instructions, release trust, PATH setup and rollback are in
 [docs/CLI_DISTRIBUTION.md](docs/CLI_DISTRIBUTION.md).
 
+Signed Android APKs are also available in
+[GitHub Releases](https://github.com/sam-eer12/prod/releases), alongside a SHA-256
+checksum. Release automation and signing configuration are documented in
+[docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md).
+
 ## What is in this setup
 
 | Area | Status |
@@ -160,8 +165,8 @@ Other useful tasks:
 
 Gradle builds and packages all four Rust ABIs automatically. Android Studio
 creates `android/local.properties` with your SDK path. That file
-is intentionally ignored by Git. Release signing is not configured yet; the
-release task produces an unsigned APK.
+is intentionally ignored by Git. Local release builds produce an unsigned APK;
+GitHub Actions signs and verifies it using the repository's Android signing secrets.
 
 ### Current app behavior
 

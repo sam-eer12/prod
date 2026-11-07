@@ -27,8 +27,10 @@ android {
         applicationId = "com.padlink.controller"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.environmentVariable("PADLINK_ANDROID_VERSION_CODE")
+            .map { value -> value.toInt().also { require(it in 1..2100000000) { "Invalid Android version code" } } }
+            .orElse(1).get()
+        versionName = providers.environmentVariable("PADLINK_ANDROID_VERSION_NAME").orElse("0.1.0").get()
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -41,7 +43,7 @@ android {
         }
 
         release {
-            // Enable R8 once release signing and a device test matrix exist.
+            // Enable R8 once a device test matrix exists.
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(
