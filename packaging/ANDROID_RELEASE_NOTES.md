@@ -1,18 +1,17 @@
-PadLink Android adds direct Bluetooth gamepad mode. No PadLink desktop CLI, daemon, or Wi-Fi connection is needed in this mode.
+PadLink Android 0.1.3 adds an experimental Xbox One S Bluetooth controller profile.
 
-1. Install the signed APK on an Android 9+ phone.
-2. Tap **Start Bluetooth** and allow nearby-device access when requested.
-3. Tap **Make discoverable**, then pair the phone in the laptop's Bluetooth settings. Keep PadLink open. If already paired, select the laptop under **Connect to**.
-4. Once connected, use the landscape controller. Pressing Home pauses gameplay; reopening restores the screen and reconnects to the same laptop. Close or Stop Bluetooth ends the session.
+- Matches the original compact Xbox One S Bluetooth Classic report descriptor, button order, unsigned 16-bit sticks, independent 10-bit analog triggers and eight-way D-pad.
+- Adds a visible Home control, separate Guide and battery input reports, and Xbox rumble output handling through both Bluetooth output paths.
+- Adds a Game vibration setting. Xbox's four motor strengths are combined onto the phone's vibration motor; touch feedback remains separately configurable.
+- Keeps the generic Bluetooth gamepad as the default and preserves layout editing, foreground play and reconnection behavior.
 
-The Bluetooth HID descriptor exposes one gamepad with A/B/X/Y, LB/RB, Back/Start, L3/R3, eight-way D-pad, two sticks, and independent analog triggers; Guide is reserved in the report. It does not expose a keyboard or mouse. Controls and local haptics clear on cancellation, focus loss, and disconnect; settings and layout editing keep the gamepad neutral.
+To try the new profile:
 
-**Settings → Edit layout** lets you drag, resize, save, cancel, and reset gameplay controls. Accessible adjustment buttons move controls in small steps. Touch targets remain at least 48 dp; overlapping or offscreen layouts cannot be saved. Settings and Close remain fixed. Unsaved edits and the current screen survive backgrounding and activity recreation.
+1. Install the signed APK on an Android 9+ phone with Bluetooth HID Device support.
+2. Close the controller or stop Bluetooth, then select **Settings → Bluetooth controller profile → Xbox One S Bluetooth**.
+3. Forget the phone on your laptop and forget the laptop on your phone. Hosts cache the controller descriptor, so a fresh pairing is required when switching either way.
+4. Start Bluetooth in PadLink, make the phone discoverable and pair again. Keep PadLink open, and restart the game after re-pairing.
 
-Touch vibration now uses direct effects on Android 15, including motors without amplitude control, with clearer button and joystick pulses. **Test vibration** in Settings helps verify it on your phone and reports disabled Android touch vibration. Physical vibration feel, including on the Vivo V27 Pro, needs phone testing.
+Android still supplies the Bluetooth vendor/product IDs. This profile cannot establish a complete Xbox device identity on a stock phone, and native Roblox compatibility on macOS remains unverified. Browser gamepad detection alone does not prove native game support. Phone vibration and radio behavior still require physical-device testing.
 
-The phone must support Android's Bluetooth HID Device profile. The app detects profile/registration failures and shows a clear error. macOS, Windows, and Linux use their native Bluetooth HID support; controller recognition and game compatibility still need physical-device testing. Games requiring XInput may not accept a generic Bluetooth HID gamepad. Game rumble is not advertised.
-
-Wi-Fi CLI gameplay remains deferred; its existing pairing check and desktop release assets remain available separately. This Android-only release does not replace the CLI's latest-release installation channel.
-
-The APK uses the same signing certificate as the previous Android release. A SHA-256 checksum is included.
+This Android-only release includes the signed APK and its SHA-256 checksum. It uses the same signing certificate as the previous Android release and can upgrade it in place. Desktop CLI assets are not republished.

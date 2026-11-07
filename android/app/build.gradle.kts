@@ -29,8 +29,8 @@ android {
         targetSdk = 37
         versionCode = providers.environmentVariable("PADLINK_ANDROID_VERSION_CODE")
             .map { value -> value.toInt().also { require(it in 1..2100000000) { "Invalid Android version code" } } }
-            .orElse(1002).get()
-        versionName = providers.environmentVariable("PADLINK_ANDROID_VERSION_NAME").orElse("0.1.2").get()
+            .orElse(1003).get()
+        versionName = providers.environmentVariable("PADLINK_ANDROID_VERSION_NAME").orElse("0.1.3").get()
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

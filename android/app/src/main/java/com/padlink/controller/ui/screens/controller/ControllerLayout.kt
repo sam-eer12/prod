@@ -23,6 +23,7 @@ enum class ControlId(val kind: ControlKind, val label: String, val mask: Int = 0
     Y(ControlKind.BUTTON, "Y", 1 shl 3),
     VIEW(ControlKind.BUTTON, "View", 1 shl 6),
     MENU(ControlKind.BUTTON, "Menu", 1 shl 7),
+    GUIDE(ControlKind.BUTTON, "Guide / Home", 1 shl 8),
     SETTINGS(ControlKind.ACTION, "Controller Settings"),
     CLOSE(ControlKind.ACTION, "Close Controller"),
 }
@@ -65,8 +66,9 @@ class ControllerLayout private constructor(val controls: List<ControlGeometry>, 
             ControlGeometry(ControlId.B, 495f, 147f, 21f),
             ControlGeometry(ControlId.A, 463f, 179f, 21f),
             ControlGeometry(ControlId.VIEW, 210f, 60f, 18f),
-            ControlGeometry(ControlId.SETTINGS, 263f, 60f, 18f),
+            ControlGeometry(ControlId.GUIDE, 263f, 60f, 18f),
             ControlGeometry(ControlId.MENU, 316f, 60f, 18f),
+            ControlGeometry(ControlId.SETTINGS, 388f, 25f, 18f),
             ControlGeometry(ControlId.CLOSE, 263f, 14f, 12f),
         )
 

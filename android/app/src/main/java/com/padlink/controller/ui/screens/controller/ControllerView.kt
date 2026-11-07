@@ -260,6 +260,10 @@ class ControllerView(context: Context) : View(context) {
                 }
             }
             ControlId.SETTINGS -> drawGear(canvas, r)
+            ControlId.GUIDE -> {
+                labelPaint.textSize = r * 0.48f
+                textCentered(canvas, "Home", 0f)
+            }
             ControlId.DPAD -> drawDpad(canvas, r, state.buttons)
             else -> Unit
         }

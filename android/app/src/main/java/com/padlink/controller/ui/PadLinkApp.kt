@@ -155,6 +155,8 @@ fun PadLinkApp() {
 
         AppDestination.SETTINGS -> SettingsScreen(
             onBack = { destinationName = settingsReturn },
+            bluetoothProfileLocked = bluetoothState.phase !in listOf(BluetoothPhase.OFF, BluetoothPhase.ERROR),
+            onStopGameRumble = bluetooth::stopRumble,
             onEditLayout = {
                 bluetooth.update(ControllerState())
                 destinationName = AppDestination.LAYOUT_EDITOR.name

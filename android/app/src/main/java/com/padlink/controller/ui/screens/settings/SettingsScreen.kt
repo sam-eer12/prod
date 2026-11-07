@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.Switch
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TextButton
@@ -47,6 +50,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.padlink.controller.BuildConfig
 import com.padlink.controller.R
+import com.padlink.controller.core.BluetoothControllerPreferences
+import com.padlink.controller.core.BluetoothControllerProfile
 import com.padlink.controller.ui.theme.PadLinkTheme
 import com.padlink.controller.ui.screens.controller.ControllerPreferences
 import com.padlink.controller.ui.screens.controller.ControllerLayoutPreferences
@@ -55,9 +60,12 @@ import com.padlink.controller.ui.screens.controller.VibrationStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onEditLayout: () -> Unit = {}) {
+fun SettingsScreen(onBack: () -> Unit, onEditLayout: () -> Unit = {},
+                   bluetoothProfileLocked: Boolean = false, onStopGameRumble: () -> Unit = {}) {
     val context = LocalContext.current
     var hapticsEnabled by remember { mutableStateOf(ControllerPreferences.hapticsEnabled(context)) }
+    var bluetoothProfile by remember { mutableStateOf(BluetoothControllerPreferences.load(context)) }
+    var gameRumbleEnabled by remember { mutableStateOf(BluetoothControllerPreferences.gameRumbleEnabled(context)) }
     val vibration = remember(context) { ControllerVibration(context) }
     var vibrationStatus by remember { mutableStateOf(vibration.status()) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -107,6 +115,50 @@ fun SettingsScreen(onBack: () -> Unit, onEditLayout: () -> Unit = {}) {
                 modifier = Modifier.padding(vertical = 16.dp),
                 color = MaterialTheme.colorScheme.outlineVariant,
             )
+
+            SectionHeader(text = stringResource(R.string.settings_bluetooth_profile))
+            Column(Modifier.selectableGroup()) {
+                BluetoothControllerProfile.entries.forEach { profile ->
+                    Row(
+                        Modifier.fillMaxWidth().selectable(
+                            selected = bluetoothProfile == profile,
+                            enabled = !bluetoothProfileLocked,
+                            role = Role.RadioButton,
+                            onClick = {
+                                bluetoothProfile = profile
+                                BluetoothControllerPreferences.save(context, profile)
+                            },
+                        ).padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = bluetoothProfile == profile, onClick = null, enabled = !bluetoothProfileLocked)
+                        Text(stringResource(if (profile == BluetoothControllerProfile.GENERIC)
+                            R.string.settings_bluetooth_generic else R.string.settings_bluetooth_xbox))
+                    }
+                }
+            }
+            Text(stringResource(if (bluetoothProfileLocked) R.string.settings_bluetooth_profile_locked
+                else R.string.settings_bluetooth_repair), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (bluetoothProfile == BluetoothControllerProfile.XBOX_ONE) {
+                Text(stringResource(R.string.settings_bluetooth_xbox_detail),
+                    modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    Modifier.fillMaxWidth().toggleable(value = gameRumbleEnabled, role = Role.Switch,
+                        onValueChange = {
+                            gameRumbleEnabled = it
+                            BluetoothControllerPreferences.setGameRumbleEnabled(context, it)
+                            if (!it) onStopGameRumble()
+                        }).padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(R.string.settings_game_rumble), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Switch(checked = gameRumbleEnabled, onCheckedChange = null)
+                }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
             SectionHeader(text = stringResource(R.string.settings_controller))
             InfoRow(

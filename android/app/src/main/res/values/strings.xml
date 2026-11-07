@@ -33,6 +33,13 @@
     <string name="settings_build_type">Build type</string>
     <string name="settings_package">Package</string>
     <string name="settings_controller">Controller</string>
+    <string name="settings_bluetooth_profile">Bluetooth controller profile</string>
+    <string name="settings_bluetooth_generic">Generic gamepad (default)</string>
+    <string name="settings_bluetooth_xbox">Xbox One S Bluetooth (experimental)</string>
+    <string name="settings_bluetooth_profile_locked">Stop Bluetooth or close the controller before changing the profile.</string>
+    <string name="settings_bluetooth_repair">After changing profiles, forget the phone on your laptop and forget the laptop on your phone. Start Bluetooth in PadLink and pair again.</string>
+    <string name="settings_bluetooth_xbox_detail">Uses Xbox One S controls, Home, battery and rumble reports. Android still supplies the device IDs, so native Roblox on Mac may not accept it. Game vibration follows your phone’s vibration settings.</string>
+    <string name="settings_game_rumble">Game vibration</string>
     <string name="settings_layout">Layout</string>
     <string name="settings_layout_value">Reference layout</string>
     <string name="settings_layout_custom">Custom layout</string>

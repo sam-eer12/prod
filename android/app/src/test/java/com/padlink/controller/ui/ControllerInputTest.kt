@@ -98,6 +98,18 @@ class ControllerInputTest {
     }
 
     @Test
+    fun homeButtonEmitsGuideAndSettingsStaysALocalAction() {
+        val input = ControllerInput()
+        val home = layout[ControlId.GUIDE]
+        input.press(1, home, home.x, home.y)
+        assertEquals(1 shl 8, input.state.buttons)
+        input.release(1)
+        val settings = layout[ControlId.SETTINGS]
+        input.press(2, settings, settings.x, settings.y)
+        assertEquals(0, input.state.buttons)
+    }
+
+    @Test
     fun referenceLayoutKeepsTouchTargetsUsableAndRejectsSmallWindows() {
         for ((width, height, density) in listOf(Triple(900f, 400f, 1f), Triple(2424f, 1000f, 2.75f), Triple(1800f, 800f, 2f))) {
             val fitted = ControllerLayout.fit(width, height, density)

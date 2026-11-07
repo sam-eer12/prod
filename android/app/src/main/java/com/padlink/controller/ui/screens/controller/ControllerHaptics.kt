@@ -12,6 +12,8 @@ import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.core.content.edit
+import com.padlink.controller.core.XboxOneRumble
+import kotlin.math.roundToInt
 
 /** Brief local feedback, bounded independently of touch-event frequency. */
 class ControllerHaptics(private val view: View) {
@@ -77,6 +79,25 @@ class ControllerVibration(private val context: Context) {
     }
 
     fun test(): Boolean = pulse(TouchPulse(100L, 180, button = true))
+
+    /** Keep Xbox timing/loops, folding its four motor strengths onto one actuator. */
+    @Suppress("DEPRECATION")
+    fun rumble(rumble: XboxOneRumble): Boolean {
+        stop()
+        if (rumble.magnitude == 0 || rumble.durationMs == 0L) return true
+        if (status() != VibrationStatus.AVAILABLE) return false
+        val motor = vibrator ?: return false
+        val timings = rumble.timings()
+        val amplitude = if (motor.hasAmplitudeControl()) (rumble.magnitude * 255f / 100f).roundToInt()
+            else VibrationEffect.DEFAULT_AMPLITUDE
+        val amplitudes = IntArray(timings.size) { if (it % 2 == 0) 0 else amplitude }
+        val effect = VibrationEffect.createWaveform(timings, amplitudes, -1)
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= 33) motor.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_MEDIA))
+            else motor.vibrate(effect, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).build())
+        }.isSuccess
+    }
+
     fun stop() { vibrator?.cancel() }
 }
 

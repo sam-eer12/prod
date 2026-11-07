@@ -183,6 +183,13 @@ GitHub Actions signs and verifies it using the repository's Android signing secr
 
 ### Current app behavior
 
+Bluetooth defaults to the generic gamepad. Settings also offers an experimental
+Xbox One S Bluetooth profile with matching compact input, Home, battery and
+rumble reports. Stop Bluetooth before switching and forget/re-pair on both
+devices afterwards. Android still supplies the device's vendor/product IDs;
+native Roblox on macOS is not yet verified. See
+[Bluetooth setup and profile details](docs/BLUETOOTH_GAMEPAD.md).
+
 - Home screen: Start listening on Wi-Fi, the actual bound endpoint, an unverified
   desktop name/address with Allow/Deny, then a token with a 60-second countdown.
 - Android 17 requests LAN permission before starting. Backgrounding, Stop,

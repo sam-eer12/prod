@@ -9,11 +9,14 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.padlink.controller.ui.screens.controller.ControllerState
+import com.padlink.controller.ui.screens.controller.ControllerVibration
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -38,7 +41,9 @@ class BluetoothGamepad(context: Context) {
     private var profile: BluetoothHidDevice? = null
     private var device: BluetoothDevice? = null
     private var connectingDevice: BluetoothDevice? = null
-    private var report = ControllerReports.bluetooth(ControllerState())
+    private var reports = BluetoothReportState(BluetoothControllerPreferences.load(context))
+    private val vibration = ControllerVibration(this.context)
+    private var nextBatteryCheck = 0L
     private var registered = false
     private val session = context.getSharedPreferences("bluetooth_session", Context.MODE_PRIVATE)
     private var resumeAddress: String? = null
@@ -46,7 +51,12 @@ class BluetoothGamepad(context: Context) {
     private val heartbeat = object : Runnable {
         override fun run() {
             if (mutableState.value.phase != BluetoothPhase.CONNECTED) return
-            if (!send(report)) { fail("Bluetooth input stopped. Reconnect your laptop."); return }
+            if (!send(reports.currentInput())) { fail("Bluetooth input stopped. Reconnect your laptop."); return }
+            if (SystemClock.elapsedRealtime() >= nextBatteryCheck) {
+                nextBatteryCheck = SystemClock.elapsedRealtime() + 30_000L
+                val battery = readBattery()
+                if (battery != null && !send(battery)) { fail("Bluetooth input stopped. Reconnect your laptop."); return }
+            }
             handler.postDelayed(this, 8)
         }
     }
@@ -59,6 +69,7 @@ class BluetoothGamepad(context: Context) {
     fun start(previousHost: String? = null) {
         if (mutableState.value.phase in listOf(BluetoothPhase.STARTING, BluetoothPhase.READY, BluetoothPhase.CONNECTING, BluetoothPhase.CONNECTED)) return
         release()
+        reports = BluetoothReportState(BluetoothControllerPreferences.load(context))
         resumeAddress = previousHost
         if (!hasPermission()) { fail("Allow nearby-device access to use Bluetooth."); return }
         val bluetooth = adapter
@@ -74,8 +85,8 @@ class BluetoothGamepad(context: Context) {
                 }
                 profile = proxy as? BluetoothHidDevice
                 val settings = BluetoothHidDeviceAppSdpSettings(
-                    "PadLink Gamepad", "Phone game controller", "PadLink",
-                    BluetoothHidDevice.SUBCLASS2_GAMEPAD, ControllerReports.descriptor,
+                    reports.profile.sdpName, reports.profile.sdpDescription, reports.profile.sdpProvider,
+                    BluetoothHidDevice.SUBCLASS2_GAMEPAD, reports.profile.descriptor,
                 )
                 try {
                     if (profile?.registerApp(settings, null, null, context.mainExecutor, callback(current)) != true) {
@@ -122,11 +133,14 @@ class BluetoothGamepad(context: Context) {
                     if (device != null && device != host) runCatching { profile?.disconnect(device) }
                     device = host
                     connectingDevice = null
-                    report = ControllerReports.bluetooth(ControllerState())
+                    reports = BluetoothReportState(reports.profile)
+                    readBattery()
                     val name = runCatching { host.name }.getOrNull() ?: "Laptop"
                     session.edit { putBoolean("active", true); putString("host", host.address) }
                     mutableState.value = mutableState.value.copy(phase = BluetoothPhase.CONNECTED, hostName = name, message = "")
                     handler.removeCallbacks(heartbeat)
+                    if (!reports.initialReports().all(::send)) { fail("Bluetooth input stopped. Reconnect your laptop."); return }
+                    nextBatteryCheck = SystemClock.elapsedRealtime() + 30_000L
                     heartbeat.run()
                 }
                 BluetoothProfile.STATE_CONNECTING -> {
@@ -136,7 +150,8 @@ class BluetoothGamepad(context: Context) {
                 BluetoothProfile.STATE_DISCONNECTED -> if (device == null || device == host) {
                     device = null
                     connectingDevice = null
-                    report = ControllerReports.bluetooth(ControllerState())
+                    reports = BluetoothReportState(reports.profile)
+                    vibration.stop()
                     handler.removeCallbacks(heartbeat)
                     mutableState.value = mutableState.value.copy(phase = BluetoothPhase.READY, hostName = "", message = "Laptop disconnected.")
                     refreshHosts()
@@ -146,14 +161,34 @@ class BluetoothGamepad(context: Context) {
         override fun onGetReport(host: BluetoothDevice, type: Byte, id: Byte, bufferSize: Int) {
             if (current != generation) return
             try {
-                if (host == device && type == BluetoothHidDevice.REPORT_TYPE_INPUT && id.toInt() == ControllerReports.REPORT_ID &&
-                    (bufferSize == 0 || bufferSize >= ControllerReports.REPORT_SIZE)) {
-                    profile?.replyReport(host, type, id, report)
-                } else profile?.reportError(host, BluetoothHidDevice.ERROR_RSP_INVALID_PARAM)
+                if (host != device) { profile?.reportError(host, BluetoothHidDevice.ERROR_RSP_NOT_READY); return }
+                val payload = when (type) {
+                    BluetoothHidDevice.REPORT_TYPE_INPUT -> {
+                        if (id.toInt() == XboxOneReports.BATTERY_ID) readBattery()
+                        reports.inputPayload(id.toInt() and 0xff)
+                    }
+                    BluetoothHidDevice.REPORT_TYPE_OUTPUT -> reports.outputPayload(id.toInt() and 0xff)
+                    else -> { profile?.reportError(host, BluetoothHidDevice.ERROR_RSP_UNSUPPORTED_REQ); return }
+                }
+                if (payload == null) profile?.reportError(host, BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID)
+                else if (bufferSize < 0 || bufferSize in 1 until payload.size) {
+                    profile?.reportError(host, BluetoothHidDevice.ERROR_RSP_INVALID_PARAM)
+                } else profile?.replyReport(host, type, id, payload)
             } catch (_: SecurityException) { fail("Bluetooth permission was revoked.") }
         }
         override fun onSetReport(host: BluetoothDevice, type: Byte, id: Byte, data: ByteArray) {
-            if (current == generation) runCatching { profile?.reportError(host, BluetoothHidDevice.ERROR_RSP_UNSUPPORTED_REQ) }
+            if (current != generation) return
+            val error = when {
+                host != device -> BluetoothHidDevice.ERROR_RSP_NOT_READY
+                type != BluetoothHidDevice.REPORT_TYPE_OUTPUT -> BluetoothHidDevice.ERROR_RSP_UNSUPPORTED_REQ
+                reports.outputPayload(id.toInt() and 0xff) == null -> BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID
+                !receiveRumble(id.toInt() and 0xff, data) -> BluetoothHidDevice.ERROR_RSP_INVALID_PARAM
+                else -> BluetoothHidDevice.ERROR_RSP_SUCCESS
+            }
+            runCatching { profile?.reportError(host, error) }
+        }
+        override fun onInterruptData(host: BluetoothDevice, reportId: Byte, data: ByteArray) {
+            if (current == generation && host == device) receiveRumble(reportId.toInt() and 0xff, data)
         }
         override fun onSetProtocol(host: BluetoothDevice, protocol: Byte) {
             if (current == generation && protocol != BluetoothHidDevice.PROTOCOL_REPORT_MODE) {
@@ -195,16 +230,30 @@ class BluetoothGamepad(context: Context) {
 
     fun update(state: ControllerState) {
         if (mutableState.value.phase != BluetoothPhase.CONNECTED) return
-        report = ControllerReports.bluetooth(state)
         // Send each touch transition immediately, preserving short press/release pairs.
-        if (!send(report)) fail("Bluetooth input stopped. Reconnect your laptop.")
+        if (!reports.update(state).all(::send)) fail("Bluetooth input stopped. Reconnect your laptop.")
     }
 
-    private fun send(bytes: ByteArray): Boolean {
+    private fun send(report: HidInputReport): Boolean {
         if (!hasPermission()) return false
         val host = device ?: return false
-        return runCatching { profile?.sendReport(host, ControllerReports.REPORT_ID, bytes) == true }.getOrDefault(false)
+        return runCatching { profile?.sendReport(host, report.id, report.data) == true }.getOrDefault(false)
     }
+
+    private fun readBattery(): HidInputReport? {
+        if (reports.profile != BluetoothControllerProfile.XBOX_ONE) return null
+        val manager = context.getSystemService(BatteryManager::class.java) ?: return null
+        val percent = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        return if (percent in 0..100) reports.setBattery(percent, manager.isCharging) else null
+    }
+
+    private fun receiveRumble(id: Int, data: ByteArray): Boolean {
+        val rumble = reports.setOutput(id, data) ?: return false
+        if (BluetoothControllerPreferences.gameRumbleEnabled(context)) vibration.rumble(rumble)
+        return true
+    }
+
+    fun stopRumble() { vibration.stop() }
 
     fun stop() {
         session.edit { clear() }
@@ -227,8 +276,8 @@ class BluetoothGamepad(context: Context) {
     private fun release() {
         ++generation
         handler.removeCallbacksAndMessages(null)
-        report = ControllerReports.bluetooth(ControllerState())
-        send(report)
+        reports.update(ControllerState()).forEach(::send)
+        vibration.stop()
         val oldProfile = profile
         val oldDevice = device ?: connectingDevice
         device = null
