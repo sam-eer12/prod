@@ -50,6 +50,7 @@ import com.padlink.controller.ui.theme.StatusPairing
 @Composable
 fun HomeScreen(
     onOpenSettings: () -> Unit,
+    onOpenController: () -> Unit = {},
     pairing: PairingUiState = PairingUiState(),
     onStart: () -> Unit = {},
     onStop: () -> Unit = {},
@@ -135,7 +136,7 @@ fun HomeScreen(
                     }
                 }
             }
-            NextMilestoneCard()
+            ControllerCard(onOpenController)
         }
     }
 }
@@ -181,7 +182,7 @@ private fun ConnectionCard(state: ConnectionState) {
 }
 
 @Composable
-private fun NextMilestoneCard() {
+private fun ControllerCard(onOpenController: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -196,13 +197,14 @@ private fun NextMilestoneCard() {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = stringResource(R.string.home_next_title),
+                text = stringResource(R.string.home_controller_title),
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                text = stringResource(R.string.home_next_body),
+                text = stringResource(R.string.home_controller_body),
                 style = MaterialTheme.typography.bodyMedium,
             )
+            Button(onClick = onOpenController) { Text(stringResource(R.string.home_try_controller)) }
         }
     }
 }

@@ -23,6 +23,8 @@ import com.padlink.controller.core.wifiPairingEndpoint
 import com.padlink.controller.ui.navigation.AppDestination
 import com.padlink.controller.ui.screens.home.HomeScreen
 import com.padlink.controller.ui.screens.settings.SettingsScreen
+import com.padlink.controller.ui.screens.controller.ControllerScreen
+import com.padlink.controller.ui.screens.controller.ControllerOrientation
 
 @Composable
 fun PadLinkApp() {
@@ -47,14 +49,24 @@ fun PadLinkApp() {
         mutableStateOf(AppDestination.HOME.name)
     }
     val destination = AppDestination.valueOf(destinationName)
+    var settingsReturn by rememberSaveable { mutableStateOf(AppDestination.HOME.name) }
+    ControllerOrientation(destination == AppDestination.CONTROLLER ||
+        destination == AppDestination.SETTINGS && settingsReturn == AppDestination.CONTROLLER.name)
 
-    BackHandler(enabled = destination == AppDestination.SETTINGS) {
-        destinationName = AppDestination.HOME.name
+    BackHandler(enabled = destination != AppDestination.HOME) {
+        destinationName = if (destination == AppDestination.SETTINGS) settingsReturn else AppDestination.HOME.name
     }
 
     when (destination) {
         AppDestination.HOME -> HomeScreen(
-            onOpenSettings = { destinationName = AppDestination.SETTINGS.name },
+            onOpenSettings = {
+                settingsReturn = AppDestination.HOME.name
+                destinationName = AppDestination.SETTINGS.name
+            },
+            onOpenController = {
+                pairing.stop()
+                destinationName = AppDestination.CONTROLLER.name
+            },
             pairing = state,
             onStart = {
                 val lanPermission = "android.permission.ACCESS_LOCAL_NETWORK"
@@ -68,7 +80,15 @@ fun PadLinkApp() {
         )
 
         AppDestination.SETTINGS -> SettingsScreen(
-            onBack = { destinationName = AppDestination.HOME.name },
+            onBack = { destinationName = settingsReturn },
+        )
+
+        AppDestination.CONTROLLER -> ControllerScreen(
+            onSettings = {
+                settingsReturn = AppDestination.CONTROLLER.name
+                destinationName = AppDestination.SETTINGS.name
+            },
+            onClose = { destinationName = AppDestination.HOME.name },
         )
     }
 }
