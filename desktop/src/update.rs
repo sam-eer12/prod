@@ -532,7 +532,12 @@ pub fn install(prefix: &Path, folder: &Path, state: &Path, channel: &str) -> io:
         let stage = Stage::new(&install_root.join("versions"))?;
         fs::copy(&source, stage.0.join(binary_name()))?;
         smoke(&stage.0.join(binary_name()), &release.version)?;
-        fs::File::open(stage.0.join(binary_name()))?.sync_all()?;
+        // FlushFileBuffers on Windows requires a write-capable handle.
+        fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(stage.0.join(binary_name()))?
+            .sync_all()?;
         fs::rename(&stage.0, payload.parent().unwrap())?;
     }
     if previous
