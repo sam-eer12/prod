@@ -82,14 +82,15 @@ fun PadLinkApp() {
                 }
                 Lifecycle.Event.ON_STOP -> {
                     pairing.stop()
-                    if (!bluetoothSystemDialog) bluetooth.pauseForBackground()
+                    // Keep Bluetooth HID active so users can pair in system settings or switch apps.
                 }
-                Lifecycle.Event.ON_RESUME -> if (!bluetoothSystemDialog) bluetooth.resumeAfterBackground()
+                Lifecycle.Event.ON_RESUME -> {
+                    bluetooth.refreshHosts()
+                }
                 else -> Unit
             }
         }
         lifecycle.addObserver(observer)
-        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) bluetooth.resumeAfterBackground()
         onDispose { lifecycle.removeObserver(observer) }
     }
     var destinationName by rememberSaveable {
@@ -148,11 +149,12 @@ fun PadLinkApp() {
             onBluetoothDiscoverable = {
                 bluetoothSystemDialog = true
                 runCatching { discoverable.launch(Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
-                    .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120)) }
+                    .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)) }
                     .onFailure { bluetoothSystemDialog = false; bluetooth.fail("Allow nearby-device access to make the phone discoverable.") }
             },
             onBluetoothRefresh = bluetooth::refreshHosts,
             onBluetoothConnect = bluetooth::connect,
+            onBluetoothSwitchProfile = bluetooth::switchProfile,
         )
 
         AppDestination.SETTINGS -> SettingsScreen(

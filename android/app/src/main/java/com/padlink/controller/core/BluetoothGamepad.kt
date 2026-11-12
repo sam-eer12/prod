@@ -30,6 +30,8 @@ data class BluetoothGamepadState(
     val hosts: List<BluetoothHost> = emptyList(),
     val hostName: String = "",
     val message: String = "",
+    val localName: String = "",
+    val profile: BluetoothControllerProfile = BluetoothControllerProfile.XBOX_ONE,
 )
 
 /** Android's native Bluetooth HID Device profile; the desktop uses its own HID driver. */
@@ -51,26 +53,17 @@ class BluetoothGamepad(context: Context) {
     private val session = context.getSharedPreferences("bluetooth_session", Context.MODE_PRIVATE)
     private var resumeAddress: String? = null
     private var bondReceiver: BroadcastReceiver? = null
-    private var consecutiveSendFailures = 0
 
     private val heartbeat = object : Runnable {
         override fun run() {
             if (mutableState.value.phase != BluetoothPhase.CONNECTED) return
-            if (send(reports.currentInput())) {
-                consecutiveSendFailures = 0
-            } else {
-                consecutiveSendFailures++
-                if (consecutiveSendFailures > 150) {
-                    fail("Bluetooth input stopped. Reconnect your laptop.")
-                    return
-                }
-            }
+            send(reports.currentInput())
             if (SystemClock.elapsedRealtime() >= nextBatteryCheck) {
                 nextBatteryCheck = SystemClock.elapsedRealtime() + 30_000L
                 val battery = readBattery()
                 if (battery != null) send(battery)
             }
-            handler.postDelayed(this, 12)
+            handler.postDelayed(this, 30)
         }
     }
 
@@ -82,7 +75,8 @@ class BluetoothGamepad(context: Context) {
     fun start(previousHost: String? = null) {
         if (mutableState.value.phase in listOf(BluetoothPhase.STARTING, BluetoothPhase.READY, BluetoothPhase.CONNECTING, BluetoothPhase.CONNECTED)) return
         release()
-        reports = BluetoothReportState(BluetoothControllerPreferences.load(context))
+        val loadedProfile = BluetoothControllerPreferences.load(context)
+        reports = BluetoothReportState(loadedProfile)
         resumeAddress = previousHost
         if (!hasPermission()) { fail("Allow nearby-device access to use Bluetooth."); return }
         val bluetooth = adapter
@@ -90,7 +84,12 @@ class BluetoothGamepad(context: Context) {
         if (!isEnabled()) { fail("Turn on Bluetooth, then start Bluetooth mode again."); return }
         session.edit { putBoolean("active", true); putString("host", previousHost) }
         val current = ++generation
-        mutableState.value = BluetoothGamepadState(BluetoothPhase.STARTING)
+        val localName = runCatching { bluetooth.name }.getOrNull() ?: "Phone"
+        mutableState.value = BluetoothGamepadState(
+            phase = BluetoothPhase.STARTING,
+            localName = localName,
+            profile = loadedProfile,
+        )
         val listener = object : BluetoothProfile.ServiceListener {
             override fun onServiceConnected(kind: Int, proxy: BluetoothProfile) {
                 if (current != generation || kind != BluetoothProfile.HID_DEVICE) {
@@ -118,9 +117,9 @@ class BluetoothGamepad(context: Context) {
         } catch (_: SecurityException) { fail("Bluetooth permission was revoked. Allow nearby-device access and retry.") }
         handler.postDelayed({
             if (current == generation && mutableState.value.phase == BluetoothPhase.STARTING) {
-                fail("Bluetooth gamepad service did not start. This phone may not support HID Device mode.")
+                fail("Bluetooth gamepad service timed out. Check that Bluetooth is enabled on your phone and retry.")
             }
-        }, 5000)
+        }, 20_000)
     }
 
     private fun callback(current: Int) = object : BluetoothHidDevice.Callback() {
@@ -128,7 +127,10 @@ class BluetoothGamepad(context: Context) {
             if (current != generation) return
             registered = isRegistered
             if (!isRegistered) { fail("Bluetooth gamepad registration ended. Keep PadLink open and start Bluetooth mode again."); return }
-            if (mutableState.value.phase == BluetoothPhase.STARTING) mutableState.value = BluetoothGamepadState(BluetoothPhase.READY)
+            val localName = runCatching { adapter?.name }.getOrNull() ?: mutableState.value.localName
+            if (mutableState.value.phase == BluetoothPhase.STARTING) {
+                mutableState.value = mutableState.value.copy(phase = BluetoothPhase.READY, localName = localName)
+            }
             registerBondReceiver(current)
             refreshHosts()
             val previousHost = resumeAddress
@@ -144,11 +146,6 @@ class BluetoothGamepad(context: Context) {
                         fail("Bluetooth permission was revoked.")
                         return
                     }
-                    if (host.bondState == BluetoothDevice.BOND_NONE) {
-                        runCatching { profile?.disconnect(host) }
-                        fail("Pair this laptop in Bluetooth settings before connecting the gamepad.")
-                        return
-                    }
                     if (device != null && device != host) runCatching { profile?.disconnect(device) }
                     device = host
                     connectingDevice = null
@@ -156,17 +153,24 @@ class BluetoothGamepad(context: Context) {
                     readBattery()
                     val name = runCatching { host.name }.getOrNull() ?: "Laptop"
                     session.edit { putBoolean("active", true); putString("host", host.address) }
-                    mutableState.value = mutableState.value.copy(phase = BluetoothPhase.CONNECTED, hostName = name, message = "")
+                    mutableState.value = mutableState.value.copy(
+                        phase = BluetoothPhase.CONNECTED,
+                        hostName = name,
+                        message = "",
+                    )
                     handler.removeCallbacks(heartbeat)
                     reports.initialReports().forEach(::send)
                     primeHostInput(current)
                     nextBatteryCheck = SystemClock.elapsedRealtime() + 30_000L
-                    consecutiveSendFailures = 0
-                    heartbeat.run()
+                    handler.postDelayed(heartbeat, 100)
                 }
                 BluetoothProfile.STATE_CONNECTING -> {
                     connectingDevice = host
-                    mutableState.value = mutableState.value.copy(phase = BluetoothPhase.CONNECTING)
+                    val name = runCatching { host.name }.getOrNull() ?: "Laptop"
+                    mutableState.value = mutableState.value.copy(
+                        phase = BluetoothPhase.CONNECTING,
+                        hostName = name,
+                    )
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> if (device == null || device == host) {
                     device = null
@@ -174,7 +178,11 @@ class BluetoothGamepad(context: Context) {
                     reports = BluetoothReportState(reports.profile)
                     vibration.stop()
                     handler.removeCallbacks(heartbeat)
-                    mutableState.value = mutableState.value.copy(phase = BluetoothPhase.READY, hostName = "", message = "Laptop disconnected.")
+                    mutableState.value = mutableState.value.copy(
+                        phase = BluetoothPhase.READY,
+                        hostName = "",
+                        message = "Laptop disconnected.",
+                    )
                     refreshHosts()
                 }
             }
@@ -182,7 +190,10 @@ class BluetoothGamepad(context: Context) {
         override fun onGetReport(host: BluetoothDevice, type: Byte, id: Byte, bufferSize: Int) {
             if (current != generation) return
             try {
-                if (host != device) { profile?.reportError(host, BluetoothHidDevice.ERROR_RSP_NOT_READY); return }
+                if (host != device && host != connectingDevice) {
+                    if (device == null) device = host
+                    else { profile?.reportError(host, BluetoothHidDevice.ERROR_RSP_NOT_READY); return }
+                }
                 val payload = when (type) {
                     BluetoothHidDevice.REPORT_TYPE_INPUT -> {
                         if (id.toInt() == XboxOneReports.BATTERY_ID) readBattery()
@@ -199,8 +210,9 @@ class BluetoothGamepad(context: Context) {
         }
         override fun onSetReport(host: BluetoothDevice, type: Byte, id: Byte, data: ByteArray) {
             if (current != generation) return
+            if (host != device && host != connectingDevice && device == null) device = host
             val error = when {
-                host != device -> BluetoothHidDevice.ERROR_RSP_NOT_READY
+                host != device && host != connectingDevice -> BluetoothHidDevice.ERROR_RSP_NOT_READY
                 type != BluetoothHidDevice.REPORT_TYPE_OUTPUT -> BluetoothHidDevice.ERROR_RSP_UNSUPPORTED_REQ
                 reports.outputPayload(id.toInt() and 0xff) == null -> BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID
                 !receiveRumble(id.toInt() and 0xff, data) -> BluetoothHidDevice.ERROR_RSP_INVALID_PARAM
@@ -209,7 +221,10 @@ class BluetoothGamepad(context: Context) {
             runCatching { profile?.reportError(host, error) }
         }
         override fun onInterruptData(host: BluetoothDevice, reportId: Byte, data: ByteArray) {
-            if (current == generation && host == device) receiveRumble(reportId.toInt() and 0xff, data)
+            if (current == generation && (host == device || device == null)) {
+                if (device == null) device = host
+                receiveRumble(reportId.toInt() and 0xff, data)
+            }
         }
         override fun onSetProtocol(host: BluetoothDevice, protocol: Byte) {
             if (current == generation && protocol != BluetoothHidDevice.PROTOCOL_REPORT_MODE) {
@@ -221,12 +236,23 @@ class BluetoothGamepad(context: Context) {
         }
     }
 
+    fun switchProfile(newProfile: BluetoothControllerProfile) {
+        BluetoothControllerPreferences.save(context, newProfile)
+        mutableState.value = mutableState.value.copy(profile = newProfile)
+        if (mutableState.value.phase == BluetoothPhase.READY) {
+            // Re-register with the newly selected profile.
+            release()
+            start()
+        }
+    }
+
     fun refreshHosts() {
         if (!hasPermission()) { fail("Bluetooth permission was revoked."); return }
         try {
             val hosts = adapter?.bondedDevices.orEmpty().take(32)
                 .map { BluetoothHost(it.address, it.name ?: "Paired device") }.sortedBy { it.name }
-            mutableState.value = mutableState.value.copy(hosts = hosts)
+            val localName = adapter?.name ?: "This phone"
+            mutableState.value = mutableState.value.copy(hosts = hosts, localName = localName)
         } catch (_: SecurityException) { fail("Bluetooth permission was revoked.") }
     }
 
@@ -235,15 +261,29 @@ class BluetoothGamepad(context: Context) {
         if (!hasPermission()) { fail("Bluetooth permission was revoked."); return }
         try {
             val host = adapter?.bondedDevices?.firstOrNull { it.address == address }
-                ?: run { fail("Pair this laptop in Bluetooth settings first."); return }
+                ?: run {
+                    mutableState.value = mutableState.value.copy(message = "Pair this laptop in Bluetooth settings first.")
+                    return
+                }
             mutableState.value = mutableState.value.copy(phase = BluetoothPhase.CONNECTING, hostName = host.name ?: "Laptop", message = "")
             connectingDevice = host
             session.edit { putString("host", address) }
-            if (profile?.connect(host) != true) { fail("Could not connect the gamepad. Check your laptop’s Bluetooth settings."); return }
+            if (profile?.connect(host) != true) {
+                connectingDevice = null
+                mutableState.value = mutableState.value.copy(
+                    phase = BluetoothPhase.READY,
+                    message = "Could not start connection to ${host.name ?: "laptop"}. Connect from your laptop instead.",
+                )
+                return
+            }
             val current = generation
             handler.postDelayed({
                 if (current == generation && mutableState.value.phase == BluetoothPhase.CONNECTING) {
-                    fail("Bluetooth connection timed out. Check your laptop’s pairing and gamepad support.")
+                    connectingDevice = null
+                    mutableState.value = mutableState.value.copy(
+                        phase = BluetoothPhase.READY,
+                        message = "Connection timed out. Connect from your laptop's Bluetooth settings.",
+                    )
                 }
             }, 15000)
         } catch (_: SecurityException) { fail("Bluetooth permission was revoked.") }
@@ -263,11 +303,11 @@ class BluetoothGamepad(context: Context) {
 
     /** macOS and some game stacks ignore the first HID packets until the channel warms up. */
     private fun primeHostInput(sessionGeneration: Int) {
-        repeat(6) { pulse ->
+        repeat(3) { pulse ->
             handler.postDelayed({
                 if (sessionGeneration != generation || mutableState.value.phase != BluetoothPhase.CONNECTED) return@postDelayed
                 reports.initialReports().forEach(::send)
-            }, pulse * 5L)
+            }, pulse * 40L)
         }
     }
 
@@ -318,21 +358,8 @@ class BluetoothGamepad(context: Context) {
         release()
     }
 
-    /** Android may unregister a background HID app. Re-register and reconnect on return. */
-    fun pauseForBackground() {
-        if (mutableState.value.phase == BluetoothPhase.OFF || mutableState.value.phase == BluetoothPhase.ERROR) return
-        release()
-    }
-
-    fun resumeAfterBackground() {
-        if (mutableState.value.phase == BluetoothPhase.OFF && session.getBoolean("active", false)) {
-            start(session.getString("host", null))
-        }
-    }
-
     private fun release() {
         ++generation
-        consecutiveSendFailures = 0
         unregisterBondReceiver()
         handler.removeCallbacksAndMessages(null)
         reports.update(ControllerState()).forEach(::send)
@@ -346,7 +373,8 @@ class BluetoothGamepad(context: Context) {
         runCatching { if (oldDevice != null) oldProfile?.disconnect(oldDevice) }
         runCatching { oldProfile?.unregisterApp() }
         runCatching { if (oldProfile != null) adapter?.closeProfileProxy(BluetoothProfile.HID_DEVICE, oldProfile) }
-        mutableState.value = BluetoothGamepadState()
+        val savedProfile = BluetoothControllerPreferences.load(context)
+        mutableState.value = BluetoothGamepadState(profile = savedProfile)
     }
 
     fun fail(message: String) { stop(); mutableState.value = BluetoothGamepadState(BluetoothPhase.ERROR, message = message) }

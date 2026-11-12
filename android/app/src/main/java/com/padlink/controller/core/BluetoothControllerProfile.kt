@@ -25,7 +25,7 @@ enum class BluetoothControllerProfile(
     }
 
     companion object {
-        fun fromStored(value: String?): BluetoothControllerProfile = entries.firstOrNull { it.name == value } ?: GENERIC
+        fun fromStored(value: String?): BluetoothControllerProfile = entries.firstOrNull { it.name == value } ?: XBOX_ONE
     }
 }
 

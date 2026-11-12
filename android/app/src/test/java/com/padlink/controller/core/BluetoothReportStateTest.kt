@@ -6,11 +6,12 @@ import org.junit.Test
 
 class BluetoothReportStateTest {
     @Test
-    fun missingOrUnknownProfileFallsBackToTheWorkingGenericDescriptor() {
-        assertEquals(BluetoothControllerProfile.GENERIC, BluetoothControllerProfile.fromStored(null))
-        assertEquals(BluetoothControllerProfile.GENERIC, BluetoothControllerProfile.fromStored("invalid"))
+    fun missingOrUnknownProfileFallsBackToTheWorkingXboxDescriptor() {
+        assertEquals(BluetoothControllerProfile.XBOX_ONE, BluetoothControllerProfile.fromStored(null))
+        assertEquals(BluetoothControllerProfile.XBOX_ONE, BluetoothControllerProfile.fromStored("invalid"))
+        assertEquals(BluetoothControllerProfile.GENERIC, BluetoothControllerProfile.fromStored("GENERIC"))
         assertEquals(BluetoothControllerProfile.XBOX_ONE, BluetoothControllerProfile.fromStored("XBOX_ONE"))
-        assertArrayEquals(ControllerReports.descriptor, BluetoothControllerProfile.GENERIC.descriptor)
+        assertArrayEquals(XboxOneReports.descriptor, BluetoothControllerProfile.XBOX_ONE.descriptor)
     }
 
     @Test

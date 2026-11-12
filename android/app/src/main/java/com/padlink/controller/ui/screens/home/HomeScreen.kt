@@ -65,6 +65,7 @@ fun HomeScreen(
     onBluetoothDiscoverable: () -> Unit = {},
     onBluetoothRefresh: () -> Unit = {},
     onBluetoothConnect: (String) -> Unit = {},
+    onBluetoothSwitchProfile: (com.padlink.controller.core.BluetoothControllerProfile) -> Unit = {},
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -105,8 +106,16 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            BluetoothCard(bluetooth, onBluetoothStart, onBluetoothStop, onBluetoothDiscoverable,
-                onBluetoothRefresh, onBluetoothConnect, onOpenController)
+            BluetoothCard(
+                state = bluetooth,
+                onStart = onBluetoothStart,
+                onStop = onBluetoothStop,
+                onDiscoverable = onBluetoothDiscoverable,
+                onRefresh = onBluetoothRefresh,
+                onConnect = onBluetoothConnect,
+                onOpenController = onOpenController,
+                onSwitchProfile = onBluetoothSwitchProfile,
+            )
 
             if (bluetooth.phase == BluetoothPhase.OFF || pairing.phase != PairingPhase.STOPPED) ConnectionCard(state = when (pairing.phase) {
                 PairingPhase.STOPPED -> ConnectionState.NOT_CONNECTED
