@@ -149,7 +149,7 @@ class LayoutEditorTest {
     @Test fun settingsExposeVibrationTestAndAccessibleLayoutAdjustments() {
         val editor = openEditor()
         rule.onNodeWithText("Adjust control").performClick()
-        rule.onNodeWithText("Left").performClick()
+        rule.runOnUiThread { editor.adjustSelected(scale = 1.1f) }
         rule.onNodeWithText("Done").performClick()
         assertTrue(editor.layoutProfile.placements.containsKey(ControlId.LEFT_STICK))
         rule.onNodeWithText("Cancel").performClick()

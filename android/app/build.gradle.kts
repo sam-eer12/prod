@@ -1,3 +1,4 @@
+import java.util.Properties
 import javax.inject.Inject
 import org.gradle.process.ExecOperations
 
@@ -18,6 +19,13 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+val hasReleaseKeystore = keystorePropertiesFile.isFile
+if (hasReleaseKeystore) {
+    keystoreProperties.load(keystorePropertiesFile.inputStream())
+}
+
 android {
     namespace = "com.padlink.controller"
     compileSdk = 37
@@ -29,11 +37,22 @@ android {
         targetSdk = 37
         versionCode = providers.environmentVariable("PADLINK_ANDROID_VERSION_CODE")
             .map { value -> value.toInt().also { require(it in 1..2100000000) { "Invalid Android version code" } } }
-            .orElse(1003).get()
-        versionName = providers.environmentVariable("PADLINK_ANDROID_VERSION_NAME").orElse("0.1.3").get()
+            .orElse(1004).get()
+        versionName = providers.environmentVariable("PADLINK_ANDROID_VERSION_NAME").orElse("0.1.4").get()
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -46,6 +65,9 @@ android {
             // Enable R8 once a device test matrix exists.
             isMinifyEnabled = false
             isShrinkResources = false
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

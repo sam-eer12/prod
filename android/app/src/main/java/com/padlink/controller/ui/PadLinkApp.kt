@@ -70,14 +70,15 @@ fun PadLinkApp() {
         }
     }
     val bluetoothPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        bluetoothSystemDialog = false
         if (grants.values.all { it }) startBluetooth() else bluetooth.fail("Allow nearby-device access to use Bluetooth.")
     }
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
+                    // Release held controls when the notification shade opens; do not unregister HID here.
                     bluetooth.update(ControllerState())
-                    if (!bluetoothSystemDialog) bluetooth.pauseForBackground()
                 }
                 Lifecycle.Event.ON_STOP -> {
                     pairing.stop()
@@ -139,6 +140,7 @@ fun PadLinkApp() {
                     "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_ADVERTISE",
                 ) else emptyArray()
                 if (permissions.any { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }) {
+                    bluetoothSystemDialog = true
                     bluetoothPermission.launch(permissions)
                 } else startBluetooth()
             },

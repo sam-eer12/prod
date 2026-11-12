@@ -14,11 +14,12 @@ class BluetoothReportStateTest {
     }
 
     @Test
-    fun genericModeRetainsAnUnnumberedThirteenByteInputAndRejectsXboxReports() {
+    fun genericModeUsesReportIdOneAndRejectsXboxReports() {
         val reports = BluetoothReportState(BluetoothControllerProfile.GENERIC)
-        assertEquals(listOf(0), reports.initialReports().map { it.id })
-        assertEquals(13, reports.inputPayload(0)!!.size)
-        (1..4).forEach { assertNull(reports.inputPayload(it)) }
+        assertEquals(listOf(1), reports.initialReports().map { it.id })
+        assertEquals(13, reports.inputPayload(1)!!.size)
+        assertNull(reports.inputPayload(0))
+        (2..4).forEach { assertNull(reports.inputPayload(it)) }
         assertNull(reports.outputPayload(3))
         assertNull(reports.setOutput(3, ByteArray(8)))
         assertNull(reports.setBattery(50, false))

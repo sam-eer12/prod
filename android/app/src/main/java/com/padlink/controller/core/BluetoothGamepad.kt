@@ -6,7 +6,10 @@ import android.bluetooth.BluetoothHidDevice
 import android.bluetooth.BluetoothHidDeviceAppSdpSettings
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.BatteryManager
@@ -47,17 +50,27 @@ class BluetoothGamepad(context: Context) {
     private var registered = false
     private val session = context.getSharedPreferences("bluetooth_session", Context.MODE_PRIVATE)
     private var resumeAddress: String? = null
+    private var bondReceiver: BroadcastReceiver? = null
+    private var consecutiveSendFailures = 0
 
     private val heartbeat = object : Runnable {
         override fun run() {
             if (mutableState.value.phase != BluetoothPhase.CONNECTED) return
-            if (!send(reports.currentInput())) { fail("Bluetooth input stopped. Reconnect your laptop."); return }
+            if (send(reports.currentInput())) {
+                consecutiveSendFailures = 0
+            } else {
+                consecutiveSendFailures++
+                if (consecutiveSendFailures > 150) {
+                    fail("Bluetooth input stopped. Reconnect your laptop.")
+                    return
+                }
+            }
             if (SystemClock.elapsedRealtime() >= nextBatteryCheck) {
                 nextBatteryCheck = SystemClock.elapsedRealtime() + 30_000L
                 val battery = readBattery()
-                if (battery != null && !send(battery)) { fail("Bluetooth input stopped. Reconnect your laptop."); return }
+                if (battery != null) send(battery)
             }
-            handler.postDelayed(this, 8)
+            handler.postDelayed(this, 12)
         }
     }
 
@@ -116,6 +129,7 @@ class BluetoothGamepad(context: Context) {
             registered = isRegistered
             if (!isRegistered) { fail("Bluetooth gamepad registration ended. Keep PadLink open and start Bluetooth mode again."); return }
             if (mutableState.value.phase == BluetoothPhase.STARTING) mutableState.value = BluetoothGamepadState(BluetoothPhase.READY)
+            registerBondReceiver(current)
             refreshHosts()
             val previousHost = resumeAddress
             resumeAddress = null
@@ -125,7 +139,12 @@ class BluetoothGamepad(context: Context) {
             if (current != generation) return
             when (connectionState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    if (!hasPermission() || runCatching { host.bondState != BluetoothDevice.BOND_BONDED }.getOrDefault(true)) {
+                    if (!hasPermission()) {
+                        runCatching { profile?.disconnect(host) }
+                        fail("Bluetooth permission was revoked.")
+                        return
+                    }
+                    if (host.bondState == BluetoothDevice.BOND_NONE) {
                         runCatching { profile?.disconnect(host) }
                         fail("Pair this laptop in Bluetooth settings before connecting the gamepad.")
                         return
@@ -139,8 +158,10 @@ class BluetoothGamepad(context: Context) {
                     session.edit { putBoolean("active", true); putString("host", host.address) }
                     mutableState.value = mutableState.value.copy(phase = BluetoothPhase.CONNECTED, hostName = name, message = "")
                     handler.removeCallbacks(heartbeat)
-                    if (!reports.initialReports().all(::send)) { fail("Bluetooth input stopped. Reconnect your laptop."); return }
+                    reports.initialReports().forEach(::send)
+                    primeHostInput(current)
                     nextBatteryCheck = SystemClock.elapsedRealtime() + 30_000L
+                    consecutiveSendFailures = 0
                     heartbeat.run()
                 }
                 BluetoothProfile.STATE_CONNECTING -> {
@@ -231,13 +252,49 @@ class BluetoothGamepad(context: Context) {
     fun update(state: ControllerState) {
         if (mutableState.value.phase != BluetoothPhase.CONNECTED) return
         // Send each touch transition immediately, preserving short press/release pairs.
-        if (!reports.update(state).all(::send)) fail("Bluetooth input stopped. Reconnect your laptop.")
+        reports.update(state).forEach(::send)
     }
 
     private fun send(report: HidInputReport): Boolean {
         if (!hasPermission()) return false
         val host = device ?: return false
         return runCatching { profile?.sendReport(host, report.id, report.data) == true }.getOrDefault(false)
+    }
+
+    /** macOS and some game stacks ignore the first HID packets until the channel warms up. */
+    private fun primeHostInput(sessionGeneration: Int) {
+        repeat(6) { pulse ->
+            handler.postDelayed({
+                if (sessionGeneration != generation || mutableState.value.phase != BluetoothPhase.CONNECTED) return@postDelayed
+                reports.initialReports().forEach(::send)
+            }, pulse * 5L)
+        }
+    }
+
+    private fun registerBondReceiver(sessionGeneration: Int) {
+        if (bondReceiver != null) return
+        bondReceiver = object : BroadcastReceiver() {
+            override fun onReceive(unusedContext: Context, intent: Intent) {
+                if (sessionGeneration != generation || intent.action != BluetoothDevice.ACTION_BOND_STATE_CHANGED) return
+                if (intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR) != BluetoothDevice.BOND_BONDED) return
+                val address = if (Build.VERSION.SDK_INT >= 33) {
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)?.address
+                } else {
+                    @Suppress("DEPRECATION") intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)?.address
+                } ?: return
+                if (mutableState.value.phase == BluetoothPhase.READY && device == null && connectingDevice == null) connect(address)
+            }
+        }
+        val filter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+        try {
+            if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(bondReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            else context.registerReceiver(bondReceiver, filter)
+        } catch (_: SecurityException) { bondReceiver = null }
+    }
+
+    private fun unregisterBondReceiver() {
+        bondReceiver?.let { runCatching { context.unregisterReceiver(it) } }
+        bondReceiver = null
     }
 
     private fun readBattery(): HidInputReport? {
@@ -275,6 +332,8 @@ class BluetoothGamepad(context: Context) {
 
     private fun release() {
         ++generation
+        consecutiveSendFailures = 0
+        unregisterBondReceiver()
         handler.removeCallbacksAndMessages(null)
         reports.update(ControllerState()).forEach(::send)
         vibration.stop()

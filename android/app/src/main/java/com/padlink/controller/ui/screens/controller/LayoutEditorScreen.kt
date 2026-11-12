@@ -119,12 +119,6 @@ fun LayoutEditorScreen(onExit: () -> Unit) {
                     Text(stringResource(R.string.editor_size, (scale * 100).roundToInt()))
                     Slider(value = scale, onValueChange = { surface.adjustSelected(scale = it) }, valueRange = 0.65f..1.65f,
                         modifier = Modifier.testTag("editor_size"))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        TextButton(onClick = { surface.adjustSelected(dxDp = -4f) }) { Text(stringResource(R.string.editor_left)) }
-                        TextButton(onClick = { surface.adjustSelected(dyDp = -4f) }) { Text(stringResource(R.string.editor_up)) }
-                        TextButton(onClick = { surface.adjustSelected(dyDp = 4f) }) { Text(stringResource(R.string.editor_down)) }
-                        TextButton(onClick = { surface.adjustSelected(dxDp = 4f) }) { Text(stringResource(R.string.editor_right)) }
-                    }
                 }
             },
             confirmButton = { TextButton(onClick = { adjust = false }) { Text(stringResource(R.string.editor_done)) } },

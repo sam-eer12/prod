@@ -71,7 +71,7 @@
     <string name="bluetooth_body">Connect directly to your laptop. No desktop app or Wi-Fi needed.</string>
     <string name="bluetooth_start">Start Bluetooth</string>
     <string name="bluetooth_starting">Starting Bluetooth gamepad…</string>
-    <string name="bluetooth_pair_help">Make your phone discoverable, then pair it in your laptop’s Bluetooth settings. Keep this screen open. Already paired? Connect to the laptop below.</string>
+    <string name="bluetooth_pair_help">Make your phone discoverable, then pair it in your laptop’s Bluetooth settings. Keep this screen open. If you upgraded PadLink or changed controller profile, forget the old pairing on both devices first. Already paired? Connect to the laptop below.</string>
     <string name="bluetooth_discoverable">Make discoverable</string>
     <string name="bluetooth_refresh">Refresh paired devices</string>
     <string name="bluetooth_connect_host">Connect to %1$s</string>

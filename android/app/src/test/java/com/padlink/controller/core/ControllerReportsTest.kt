@@ -83,7 +83,7 @@ class ControllerReportsTest {
             if (type == 1) when (tag) {
                 0 -> { page = value; assertTrue("Only Desktop and Button usages are allowed", page == 1 || page == 9) }
                 7 -> size = value
-                8 -> fail("No numbered reports are declared")
+                8 -> assertEquals("A numbered input report is required for host compatibility", ControllerReports.REPORT_ID, value)
                 9 -> count = value
             }
             if (type == 2 && tag == 0) usage = value

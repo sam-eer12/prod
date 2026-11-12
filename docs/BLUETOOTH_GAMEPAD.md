@@ -69,9 +69,11 @@ behavior still require that test.
 X grows right and Y grows down. Opposite D-pad directions cancel. Non-finite
 values become neutral; analog values are clamped. Each touch transition sends a
 report immediately, with a periodic current-state report while connected.
-The descriptor has a single Generic Desktop/Game Pad application collection,
-13 bytes of input, and no keyboard, mouse, relative pointer, output, or feature
-reports. It does not advertise game-controlled rumble.
+The descriptor has a single Generic Desktop/Game Pad application collection with
+**report ID 1**, 13 bytes of input payload (neutral D-pad value **8**), and no
+keyboard, mouse, relative pointer, output, or feature reports. It does not
+advertise game-controlled rumble. After upgrading PadLink, forget the old
+laptop pairing on both devices once so the host picks up the new descriptor.
 
 ### Xbox One S Bluetooth (experimental)
 
