@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/brok-bot/brok-bot/main/marketplace/schema/connector-manifest.schema.json",
+  "title": "Brok Bot Connector Manifest",
+  "description": "Declarative manifest schema for Brok Bot's server-side modular connector marketplace.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "version",
+    "description",
+    "transport",
+    "auth",
+    "permissions",
+    "tools",
+    "signature"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Unique kebab-case identifier for the connector."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable connector name displayed in the Marketplace UI."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$",
+      "description": "Semantic version (SemVer) of the connector manifest."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Concise summary of connector capabilities."
+    },
+    "manifestPath": {
+      "type": "string",
+      "description": "Optional relative path to the standalone manifest file when embedded inside catalog.json."
+    },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["macos", "android"]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Supported Brok Bot client platforms."
+    },
+    "transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "tcp_jsonrpc",
+            "rest_http",
+            "mcp_streamable_http",
+            "mcp_stdio"
+          ],
+          "description": "Wire transport protocol used to communicate with the connector."
+        },
+        "host": {
+          "type": "string",
+          "description": "Target host for local socket transports (e.g., 127.0.0.1)."
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Target TCP port for local socket transports."
+        },
+        "baseUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Base HTTPS URL for REST or Streamable HTTP MCP endpoints."
+        },
+        "command": {
+          "type": "string",
+          "description": "Executable name or path for local stdio MCP servers."
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Command-line arguments passed to local stdio MCP processes."
+        },
+        "pollingIntervalSeconds": {
+          "type": "integer",
+          "minimum": 15,
+          "description": "Optional default background delta polling interval."
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["none", "oauth2_pkce", "api_key", "bearer"],
+          "description": "Authentication mechanism stored inside the hardware vault."
+        },
+        "authorizationEndpoint": {
+          "type": "string",
+          "format": "uri"
+        },
+        "tokenEndpoint": {
+          "type": "string",
+          "format": "uri"
+        },
+        "redirectUri": {
+          "type": "string",
+          "description": "OAuth 2.0 loopback or custom scheme redirect URI."
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "setupFields": {
+          "type": "array",
+          "description": "Dynamic Setup UI form fields generated on client install.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "label", "secret", "required"],
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "secret": {
+                "type": "boolean"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "defaultValue": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "Capability and OS/API permission scopes requested by the connector."
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "description", "requiresApproval"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Normalized tool identifier exposed to BYOK LLM function calling."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requiresApproval": {
+            "type": "boolean",
+            "description": "When true, execution pauses at the interactive Approval Gate (chat card or OS notification)."
+          },
+          "inputSchema": {
+            "type": "object",
+            "description": "Optional JSON Schema describing tool arguments."
+          }
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "value"],
+      "description": "Cryptographic signature verified prior to executing untrusted remote manifests.",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["ed25519"]
+        },
+        "keyId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

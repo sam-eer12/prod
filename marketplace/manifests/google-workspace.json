@@ -1,0 +1,131 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "google-workspace",
+  "name": "Google Workspace",
+  "version": "1.0.0",
+  "description": "Client-side Gmail and Google Calendar integration via OAuth 2.0 PKCE loopback auth and battery-aware incremental delta polling.",
+  "platforms": ["macos", "android"],
+  "transport": {
+    "type": "rest_http",
+    "baseUrl": "https://www.googleapis.com",
+    "pollingIntervalSeconds": 300
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "authorizationEndpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+    "tokenEndpoint": "https://oauth2.googleapis.com/token",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/calendar.readonly",
+      "https://www.googleapis.com/auth/calendar.events"
+    ],
+    "setupFields": [
+      {
+        "key": "client_id",
+        "label": "Google OAuth Desktop/Mobile Client ID",
+        "secret": false,
+        "required": true,
+        "placeholder": "1234567890-abc.apps.googleusercontent.com"
+      }
+    ]
+  },
+  "permissions": [
+    "gmail.readonly",
+    "gmail.send",
+    "calendar.readonly",
+    "calendar.events"
+  ],
+  "tools": [
+    {
+      "name": "gmail_list_messages",
+      "description": "Query primary unread or prioritized Gmail messages for triage and morning briefings.",
+      "requiresApproval": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "default": "is:unread category:primary"
+          },
+          "maxResults": {
+            "type": "integer",
+            "default": 20
+          }
+        }
+      }
+    },
+    {
+      "name": "gmail_send_message",
+      "description": "Send an email reply or new message through Gmail after explicit user approval.",
+      "requiresApproval": true,
+      "inputSchema": {
+        "type": "object",
+        "required": ["to", "subject", "body"],
+        "properties": {
+          "to": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "gcal_list_events",
+      "description": "Fetch upcoming Google Calendar meetings and detect scheduling conflicts.",
+      "requiresApproval": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "timeMin": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeMax": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    {
+      "name": "gcal_create_event",
+      "description": "Create or modify a Google Calendar event after explicit user approval.",
+      "requiresApproval": true,
+      "inputSchema": {
+        "type": "object",
+        "required": ["summary", "startTime", "endTime"],
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "attendees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

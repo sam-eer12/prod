@@ -1,0 +1,94 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "blender-3d",
+  "name": "Blender 3D Bridge",
+  "version": "1.0.0",
+  "description": "Local TCP JSON-RPC 2.0 bridge for Blender scene inspection, guarded bpy script execution, and inline viewport PNG preview rendering.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "tcp_jsonrpc",
+    "host": "127.0.0.1",
+    "port": 9876
+  },
+  "auth": {
+    "type": "none",
+    "scopes": [],
+    "setupFields": [
+      {
+        "key": "host",
+        "label": "Blender Socket Host",
+        "secret": false,
+        "required": true,
+        "defaultValue": "127.0.0.1",
+        "placeholder": "127.0.0.1"
+      },
+      {
+        "key": "port",
+        "label": "Blender Socket Port",
+        "secret": false,
+        "required": true,
+        "defaultValue": "9876",
+        "placeholder": "9876"
+      }
+    ]
+  },
+  "permissions": [
+    "local_socket",
+    "execute_bpy_script",
+    "render_viewport"
+  ],
+  "tools": [
+    {
+      "name": "blender_get_scene_info",
+      "description": "Inspect active Blender objects, cameras, lights, materials, and render settings.",
+      "requiresApproval": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeMaterials": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    {
+      "name": "blender_execute_script",
+      "description": "Execute a generated Python (bpy) script inside the connected Blender instance.",
+      "requiresApproval": true,
+      "inputSchema": {
+        "type": "object",
+        "required": ["code"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Python script using Blender's bpy module."
+          }
+        }
+      }
+    },
+    {
+      "name": "blender_render_preview",
+      "description": "Render the active camera or viewport and return an inline PNG buffer.",
+      "requiresApproval": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "default": 1920
+          },
+          "height": {
+            "type": "integer",
+            "default": 1080
+          }
+        }
+      }
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

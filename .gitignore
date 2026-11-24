@@ -1,0 +1,39 @@
+# macOS & OS artifacts
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+*~
+
+# Swift / macOS build & packaging artifacts
+macos/.build/
+macos/.swiftpm/
+macos/dist/
+*.xcodeproj/
+*.xcworkspace/
+
+# Android / Gradle build artifacts
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+*.jks
+*.keystore
+
+# Hardware Vault, Secrets & Environment
+vault.enc
+*.vault
+.env
+.env.*
+!.env.example
+
+# IDE & Editor state
+.idea/
+.vscode/
+*.iml
