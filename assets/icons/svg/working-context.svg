@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Open-Corner Ephemeral Scratchpad Sheet -->
+  <path d="M 13.5 4 H 6.5 A 2.5 2.5 0 0 0 4 6.5 V 17.5 A 2.5 2.5 0 0 0 6.5 20 H 17.5 A 2.5 2.5 0 0 0 20 17.5 V 10.5" />
+  <!-- Active Context Lines & Prompt Cursor -->
+  <path d="M 8 9.5 L 10.25 11.5 L 8 13.5" />
+  <path d="M 12 13.5 H 15.5" />
+  <path d="M 8 16.5 H 13" />
+  <!-- Live Spark (Ephemeral Scratchpad Focus) -->
+  <path d="M 18 2.5 V 7" />
+  <path d="M 15.75 4.75 H 20.25" />
+</svg>

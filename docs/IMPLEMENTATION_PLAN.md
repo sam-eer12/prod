@@ -1,7 +1,7 @@
 # Brok Bot: Technical Architecture & Implementation Plan
 
 **Project Codename:** Brok Bot  
-**Document Version:** 1.1.0  
+**Document Version:** 1.3.0  
 **Authors:** Brok Bot Core Engineering Team  
 **Target Release:** v1.0 MVP  
 
@@ -79,6 +79,95 @@ flowchart TB
     ToolRouter --> MCPClient
 ```
 
+### 1.1. Repository & Monorepo Layout
+
+Brok Bot uses a single monorepo organized by platform client, shared specifications, brand assets, dynamic connector manifests, and build automation:
+
+```text
+.
+├── .gitignore
+├── LICENSE
+├── README.md
+├── assets/                                    # Master logo, PNG derivatives, platform icons & SVG suite
+│   ├── README.md                              # Brand & 17-icon SVG asset catalog
+│   ├── logo.jpg                               # Untouched canonical 1024x1024 brand mark
+│   ├── logo.png / logo-512.png / logo-256.png
+│   └── icons/
+│       ├── macos/                             # AppIcon.iconset/ + compiled AppIcon.icns
+│       ├── android/                           # mipmap-{mdpi..xxxhdpi}/ic_launcher.png + drawable/brok_logo.png
+│       └── svg/                               # 17-icon Liquid Glass SVG suite (brok-mark, menu bar template, 15 UI icons)
+├── docs/                                      # Product & engineering specifications
+│   ├── PRD.md
+│   └── IMPLEMENTATION_PLAN.md
+├── macos/                                     # Native macOS SwiftPM package (Swift 6, macOS 14+)
+│   ├── Package.swift
+│   ├── Sources/
+│   │   ├── BrokBotCore/                       # Core runtime library
+│   │   │   ├── Compute/BrokComputeEngine.swift
+│   │   │   ├── Context/
+│   │   │   │   ├── DualSpacePromptAssembler.swift
+│   │   │   │   ├── PermanentMemoryStore.swift
+│   │   │   │   └── WorkingContextStore.swift
+│   │   │   ├── Marketplace/ConnectorManifest.swift
+│   │   │   ├── Models/
+│   │   │   │   ├── BotPersona.swift
+│   │   │   │   ├── ChatMessage.swift
+│   │   │   │   └── ConversationThread.swift
+│   │   │   ├── Notifications/LocalNotificationSpec.swift
+│   │   │   ├── Providers/
+│   │   │   │   ├── BYOKModelClient.swift
+│   │   │   │   ├── BYOKProvider.swift
+│   │   │   │   ├── BYOKTypes.swift
+│   │   │   │   └── SSEStreamParser.swift
+│   │   │   └── Vault/BrokVaultManager.swift
+│   │   └── BrokBotApp/                        # Native Liquid Glass AppKit & SwiftUI client
+│   │       ├── App/
+│   │       │   ├── BrokBotAppDelegate.swift
+│   │       │   ├── GlobalHotkeyManager.swift
+│   │       │   ├── LocalNotificationManager.swift
+│   │       │   └── MenuBarPopoverView.swift
+│   │       ├── Resources/
+│   │       │   ├── AppIcon.icns
+│   │       │   ├── brok-menubar-template.svg
+│   │       │   └── logo.png
+│   │       └── UI/
+│   │           ├── LiquidGlassModifier.swift
+│   │           ├── MainWorkspaceView.swift
+│   │           ├── PersonaEditorSheet.swift
+│   │           ├── SettingsSheetView.swift
+│   │           └── WorkspaceViewModel.swift
+│   └── Tests/BrokBotCoreTests/                # XCTest suite
+│       ├── BYOKModelClientTests.swift
+│       ├── BrokBotCoreTests.swift
+│       └── VaultAndContextTests.swift
+├── android/                                   # Native Android Gradle project (Kotlin 2.2, Compose, Min SDK 28)
+│   ├── settings.gradle.kts
+│   ├── build.gradle.kts
+│   ├── gradle/libs.versions.toml
+│   ├── gradlew / gradlew.bat
+│   └── app/src/
+│       ├── main/
+│       │   ├── java/org/brokbot/android/      # UI, core runtime, WorkManager & BootReceiver
+│       │   └── res/drawable/ic_brok_notification.xml  # Monochrome status-bar vector drawable
+│       └── test/java/org/brokbot/android/     # JVM unit tests
+├── marketplace/                               # Server-side modular connector schema & catalog
+│   ├── catalog.json
+│   ├── schema/connector-manifest.schema.json
+│   └── manifests/                             # Individual connector manifests (blender-3d, google-workspace)
+└── scripts/                                   # Build, signing, and release scripts
+    └── build-macos.sh                         # Release build + BrokBot.app bundle + ad-hoc codesign
+```
+
+| Directory / File | Responsibility | Primary Owner / Phase |
+| :--- | :--- | :--- |
+| `assets/` | Untouched source `logo.jpg`, PNG exports, macOS `.icns`, Android launcher icons, and `icons/svg/` (17-icon Liquid Glass SVG suite) | Phase `0A`, `1` |
+| `docs/` | Product Requirements (`PRD.md`) and Technical Architecture (`IMPLEMENTATION_PLAN.md`) | Phase `0B`, `1` |
+| `marketplace/` | JSON Schema Draft 2020-12 manifest validation, remote catalog index, connector manifests | Phase `0B`, `2A`–`2E` |
+| `macos/` | `BrokBotCore` (`Vault/`, `Context/`, `Models/`, `Providers/`, `Notifications/`), `BrokBotApp` (`App/`, `UI/`, `Resources/`), `XCTest` suite | Phase `0C`, `1A`–`1E`, `2B`–`2E`, `4A`–`4E` |
+| `android/` | Jetpack Compose `haze` Liquid Glass client, `res/drawable/ic_brok_notification.xml`, StrongBox Vault, `WorkManager` / `BootReceiver` | Phase `0D`, `1`, `3A`–`3E`, `4A`–`4E` |
+| `scripts/` | macOS `.app` bundle assembly, ad-hoc signing (`codesign -s -`), and release packaging | Phase `0C`, `4E` |
+| `.gitignore`, `LICENSE`, `README.md` | Repo hygiene (ignoring `.build/`, `dist/`, `.gradle/`, `vault.enc`), Apache 2.0 license, onboarding | Phase `0B`, `1` |
+
 ---
 
 ## 2. Technology Stack & Dependency Selection
@@ -100,11 +189,11 @@ flowchart TB
 ### 2.2. Android Client (Kotlin & Jetpack Compose)
 | Component | Library / Framework | Version / Requirement | License | Justification |
 | :--- | :--- | :--- | :--- | :--- |
-| **Language & SDK** | Kotlin 2.0+ / Android SDK | Android 9.0+ (Min SDK 28, Target 34+) | Google | Modern Android standard. |
-| **UI Framework** | Jetpack Compose | Compose 1.7+ | Apache 2.0 | Declarative UI, reactive state binding. |
-| **Glass Effects** | `chrisbanes/haze` | Latest Release | Apache 2.0 | Provides real-time dynamic blur on Compose surfaces. |
+| **Language & SDK** | Kotlin 2.2+ / Android SDK | Android 9.0+ (Min SDK 28, Target 35) | Google | Modern Android standard with Compose compiler plugin. |
+| **UI Framework** | Jetpack Compose | Compose BOM 2025.09.00+ | Apache 2.0 | Declarative UI, reactive state binding. |
+| **Glass Effects** | `chrisbanes/haze` | `1.3.1` | Apache 2.0 | Real-time dynamic backdrop blur (`hazeSource` / `hazeEffect`). |
 | **Hardware Accel** | Android NNAPI / Vulkan | Android NDK / MediaPipe | Google / Khronos | Hardware accelerated local ML & graphics. |
-| **Background Tasks** | AndroidX `WorkManager` | Latest Release | Apache 2.0 | Battery-optimized periodic execution. |
+| **Background Tasks** | AndroidX `WorkManager` | `2.10.1`+ | Apache 2.0 | Battery-optimized periodic execution. |
 | **Precise Alarms** | `AlarmManager` | Native Android | Google | Schedules morning briefings and routines down to the second. |
 | **Vault & Crypto** | Android Keystore + Google Tink | Security Crypto 1.1+ | Apache 2.0 | Hardware-backed key management and encrypted DataStore. |
 | **Decentralized Sync** | `automerge/automerge-kt` | Latest Release | MIT | Kotlin bindings for Automerge CRDT. |
@@ -276,45 +365,66 @@ public struct VisualEffectBackground: NSViewRepresentable {
 ```
 
 ### 4.2. Android Jetpack Compose Liquid Glass Surface
-Using Chris Banes' `haze` library on Jetpack Compose:
+Using Chris Banes' `haze` (`1.3.1`) library on Jetpack Compose:
+
+> **Haze 1.3.1 API Note:** `hazeEffect` (and legacy `hazeChild`) do **not** accept a `shape` parameter. Mark the ambient backdrop with `Modifier.hazeSource(state = hazeState)` and clip foreground glass cards with `Modifier.clip(shape).hazeEffect(state = hazeState)` before applying the translucent fill and specular border.
 
 ```kotlin
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
+
+@Composable
+fun LiquidGlassBackdropContainer(
+    modifier: Modifier = Modifier,
+    backdropContent: @Composable BoxScope.() -> Unit,
+    foregroundContent: @Composable BoxScope.(HazeState) -> Unit
+) {
+    val hazeState = rememberHazeState()
+    Box(modifier = modifier) {
+        Box(modifier = Modifier.matchParentSize().hazeSource(state = hazeState)) {
+            backdropContent()
+        }
+        foregroundContent(hazeState)
+    }
+}
 
 @Composable
 fun LiquidGlassSurface(
     hazeState: HazeState,
     glowColor: Color = Color(0xFF00E5FF),
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
+    content: @Composable BoxScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(20.dp)
     val specularBrush = Brush.linearGradient(
         colors = listOf(
             Color.White.copy(alpha = 0.22f),
-            Color.White.copy(alpha = 0.05f),
+            glowColor.copy(alpha = 0.08f),
             Color.White.copy(alpha = 0.12f)
         )
     )
 
     Box(
         modifier = modifier
-            .hazeChild(state = hazeState, shape = shape)
-            .background(Color.Black.copy(alpha = 0.25f), shape = shape)
-            .border(width = 1.dp, brush = specularBrush, shape = shape)
-    ) {
-        content()
-    }
+            .clip(shape)
+            .hazeEffect(state = hazeState)
+            .background(Color.Black.copy(alpha = 0.28f), shape = shape)
+            .border(width = 1.dp, brush = specularBrush, shape = shape),
+        content = content
+    )
 }
 ```
 
@@ -432,62 +542,152 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 ## 7. Phased Implementation Roadmap
 
+Brok Bot execution is divided into **5 structured phases (Phase 0 through Phase 4)**, progressing from bootstrapped cross-platform foundations to v1.0 release. Each phase breaks down into parallelizable sub-phases (`A`–`E`) with explicit target paths, prerequisites, and objective verification gates.
+
 ```mermaid
 gantt
-    title Brok Bot Implementation Roadmap
+    title Brok Bot 5-Phase Implementation Roadmap
     dateFormat  YYYY-MM-DD
-    section Phase 1: Core macOS & Context
-    SwiftUI Liquid Glass Architecture    :2026-12-01, 14d
-    Dual-Space Context & Compactor Engine:2026-12-08, 14d
-    BYOK Model Engine (Multi-Provider)   :2026-12-15, 12d
-    Headless Open-at-Login Daemon        :2026-12-22, 10d
-    Hardware Vault (Touch ID AES-GCM)    :2026-12-28, 8d
+    section Phase 0 Foundation and Setup
+    0A Brand Assets and Icons            :done, p0a, 2026-11-24, 3d
+    0B Monorepo Config and Schema        :done, p0b, 2026-11-24, 3d
+    0C macOS SwiftPM Shell and Scaffolds :done, p0c, 2026-11-24, 5d
+    0D Android Compose Haze Shell        :done, p0d, 2026-11-24, 5d
+    0E Build and Test Baseline           :done, p0e, after p0c, 2d
 
-    section Phase 2: Marketplace & Connectors
-    Manifest Schema & Dynamic Catalog    :2027-01-05, 12d
-    Blender 3D Connector (Socket Bridge) :2027-01-14, 10d
-    Google Workspace (OAuth PKCE + Sync) :2027-01-22, 12d
-    Approval Engine & Action Review Card :2027-02-01, 10d
+    section Phase 1 Core macOS Client
+    1A Liquid Glass Multi-Bot Workspace  :done, p1a, 2026-12-01, 10d
+    1B Touch ID AES-256-GCM Vault        :done, p1b, 2026-12-01, 10d
+    1C Dual-Space Context and Compactor  :done, p1c, after p1b, 10d
+    1D BYOK Multi-Model Streaming Engine :done, p1d, after p1b, 12d
+    1E Headless SMAppService and Notifs  :done, p1e, after p1a, 10d
 
-    section Phase 3: Android App & Notifs
-    Compose Liquid Glass with Haze Blur  :2027-02-10, 14d
-    Android StrongBox Vault & BootReceiver:2027-02-20, 12d
-    WorkManager Background Sync          :2027-02-28, 10d
+    section Phase 2 Modular Marketplace
+    2A Registry Ed25519 and Setup UI     :active, p2a, 2026-12-26, 10d
+    2B Tool Router and Approval Gate     :p2b, after p2a, 10d
+    2C Blender 3D Local Socket Bridge    :p2c, after p2b, 10d
+    2D Google Workspace PKCE and Sync    :p2d, after p2b, 12d
+    2E MCP Client HTTP and Local Stdio   :p2e, after p2b, 10d
 
-    section Phase 4: Sync, Voice & v1.0 Launch
-    Automerge LAN P2P Sync (Bonjour/mTLS):2027-03-08, 16d
-    WhisperKit & Local Voice Mode        :2027-03-20, 12d
-    v1.0 Public Open-Source Release      :2027-04-01, 7d
+    section Phase 3 Native Android App
+    3A Compose Liquid Glass Phone Tablet :p3a, 2027-01-20, 12d
+    3B StrongBox Tink Vault and Context  :p3b, 2027-01-20, 12d
+    3C BYOK and Remote Connector Parity  :p3c, after p3b, 12d
+    3D BootReceiver WorkManager Alarms   :p3d, after p3b, 10d
+    3E Coroutines Pool and NNAPI Vulkan  :p3e, after p3a, 8d
+
+    section Phase 4 Sync Voice and Release
+    4A Automerge CRDT E2EE State Schema  :p4a, 2027-02-18, 12d
+    4B Bonjour NSD mTLS P2P QR Pairing   :p4b, after p4a, 12d
+    4C On-Device Voice WhisperKit NNAPI  :p4c, 2027-02-18, 12d
+    4D Security Audit and Perf Profiling :p4d, after p4b, 10d
+    4E v1.0 Packaging and Distribution   :p4e, after p4d, 7d
 ```
 
-### Phase 1: Core macOS, Dual Context & Headless Daemon (Weeks 1–4)
-- **Sprint 1.1:** Setup SPM project. Implement `LiquidGlassModifier` and `VisualEffectBackground`.
-- **Sprint 1.2:** Build **Dual-Space Context Management**: ephemeral Working Context + permanent enclave-backed memory with regex/LLM intent parsing (`store`, `update`, `delete`).
-- **Sprint 1.3:** Build the **Semantic Auto-Compactor Engine** for memory deduplication.
-- **Sprint 1.4:** Implement **BYOK Model Engine** (OpenRouter, Gemini, Claude, OpenAI, NIM).
-- **Sprint 1.5:** Implement **SMAppService Headless Open-at-Login** (`--background` mode) and Menu Bar status item.
-- **Sprint 1.6:** Implement Settings UI: thread count (`1`, `2`, `4`), hardware acceleration toggle, and ad-hoc signing scripts.
+---
 
-### Phase 2: Modular Marketplace, Blender & Google Connectors (Weeks 5–8)
-- **Sprint 2.1:** Deploy remote manifest registry on CDN/GitHub Pages.
-- **Sprint 2.2:** Build dynamic in-app marketplace browser and installer.
-- **Sprint 2.3:** Implement Blender 3D socket connector (JSON-RPC 2.0 to `127.0.0.1:9876`).
-- **Sprint 2.4:** Implement Google Workspace connector with OAuth PKCE loopback redirect and incremental delta polling.
-- **Sprint 2.5:** Build interactive Approval Card UI in chat for write operations.
+### Phase 0: Foundation, Branding & Project Setup (Status: Completed)
 
-### Phase 3: Native Android App & Background Workers (Weeks 9–12)
-- **Sprint 3.1:** Setup Jetpack Compose project with Chris Banes' `haze` library for Liquid Glass blur.
-- **Sprint 3.2:** Implement Android Keystore + StrongBox Tink vault.
-- **Sprint 3.3:** Implement `BootReceiver` and `WorkManager` for silent post-boot background execution.
-- **Sprint 3.4:** Build client-side notifications with interactive action buttons (`Approve` / `Deny`).
-- **Sprint 3.5:** Multi-threading configuration (Coroutines dispatcher) and NNAPI toggle.
+- **Goal:** Establish the unified monorepo structure, brand iconography, license/ignore hygiene, declarative connector schema, compilable Liquid Glass shells on macOS and Android, and an automated build-and-test baseline.
+- **Sub-Phases & Concrete Deliverables:**
+  - **0A — Brand Assets & Icons (`assets/`):** Copy master `logo.jpg` (1024×1024), generate lossless PNG derivatives (`logo.png`, `logo-512.png`, `logo-256.png`), compile macOS `AppIcon.iconset/` and `AppIcon.icns`, export Android density icons (`mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png`, `drawable/brok_logo.png`), and document asset usage in `assets/README.md`.
+  - **0B — Monorepo Config & Marketplace Schema (`.gitignore`, `LICENSE`, `marketplace/`):** Create root `.gitignore` and Apache 2.0 `LICENSE`; update `docs/IMPLEMENTATION_PLAN.md` (`v1.2.0`) and `README.md`; define `marketplace/schema/connector-manifest.schema.json` (JSON Schema Draft 2020-12) and starter `marketplace/catalog.json` + manifests (`blender-3d`, `google-workspace`).
+  - **0C — macOS SwiftPM Liquid Glass Shell & Core Scaffolds (`macos/`, `scripts/build-macos.sh`):** Configure Swift 6 `Package.swift` (`BrokBotCore`, `BrokBotApp`, `BrokBotCoreTests`), core scaffolds (`BotPersona`, `ChatMessage`, `WorkingContextStore`, `PermanentMemoryStore` + `MemoryCommandParser` + `SemanticCompactor` + `BrokVaultStoring`, `BrokComputeEngine`, `BYOKProvider`, `ConnectorManifest`), AppKit/SwiftUI `BrokBotAppDelegate` (`--background` login flag + `SMAppService`), `LiquidGlassModifier`, `MainWorkspaceView`, `SettingsSheetView`, unit tests, and `scripts/build-macos.sh` ad-hoc `.app` bundler.
+  - **0D — Android Jetpack Compose Haze Shell & Core Scaffolds (`android/`):** Configure Gradle Kotlin DSL + `libs.versions.toml` (AGP `8.11.1`, Kotlin `2.2.10`, Compose BOM `2025.09.00`, Haze `1.3.1`), `AndroidManifest.xml`, `BrokApplication`, `MainActivity`, `LiquidGlassSurface` (`hazeSource` + `clip(shape).hazeEffect`), `BrokHomeScreen`, `DualSpaceContext`, `BrokComputeConfig`, `BYOKProvider`, `BrokBootReceiver`, `BrokRoutineWorker`, and JVM unit tests.
+  - **0E — Automated Build & Test Baseline:** Verify JSON validity across `marketplace/`, confirm zero broken markdown/asset links, and validate green builds + unit tests on both macOS and Android.
+- **Target Paths:** `assets/**`, `docs/IMPLEMENTATION_PLAN.md`, `README.md`, `.gitignore`, `LICENSE`, `marketplace/**`, `macos/**`, `scripts/build-macos.sh`, `android/**`.
+- **Dependencies:** None (greenfield repository bootstrap; `0A`–`0D` execute concurrently, converging at `0E`).
+- **Exit Criteria / Verification Gate:**
+  - `python3 -m json.tool` succeeds on all files in `marketplace/`.
+  - `cd macos && swift test && swift build` passes with zero errors, and `bash scripts/build-macos.sh && codesign --verify --deep --strict macos/dist/BrokBot.app` succeeds.
+  - `cd android && JAVA_HOME=.../temurin-17.jdk/Contents/Home ANDROID_HOME=.../Android/sdk ./gradlew testDebugUnitTest assembleDebug` reports `BUILD SUCCESSFUL` and emits `app-debug.apk`.
+  - `git status --short` shows no untracked build artifacts (`.build/`, `dist/`, `.gradle/`, `app/build/`, `.DS_Store`, `local.properties`).
 
-### Phase 4: Decentralized Sync, Voice & v1.0 Release (Weeks 13–16)
-- **Sprint 4.1:** Integrate **Automerge CRDT** for local-first peer sync.
-- **Sprint 4.2:** Build LAN Bonjour / mDNS discovery and QR code pairing.
-- **Sprint 4.3:** Integrate **WhisperKit** for on-device voice dictation (`Cmd+D`).
-- **Sprint 4.4:** Security verification, supply-chain manifest signature verification (Ed25519).
-- **Sprint 4.5:** Public release: Homebrew Cask, ad-hoc signed DMG, Android APK, and F-Droid repository.
+---
+
+### Phase 1: Core macOS Client, Dual-Space Context & BYOK Engine (Status: Completed)
+
+- **Goal:** Deliver a daily-usable native macOS AI teammate app featuring Touch ID enclave storage, auto-compacting Dual-Space memory, streaming BYOK multi-model conversations, and silent Open-at-Login background operation.
+- **Sub-Phases & Concrete Deliverables:**
+  - **1A — Liquid Glass Multi-Bot Workspace UI & Cohesive SVG Suite:** Expand `MainWorkspaceView`, `WorkspaceViewModel`, and `SettingsSheetView` with `ConversationThread` / `WorkspacePersistenceStore` multi-thread persistence, `PersonaEditorSheet` custom specialist bot CRUD (name, instructions, persona glow color, SF Symbol, pinned tools), streaming markdown/code response cards with token usage pills, and translucent floating toolbar controls; pair with the 17-icon Liquid Glass SVG vector suite (`assets/icons/svg/`) and Android notification vector drawable (`android/app/src/main/res/drawable/ic_brok_notification.xml`).
+  - **1B — Hardware Vault (`LocalAuthentication` Touch ID + `HKDF<SHA256>` + AES-256-GCM `vault.enc`):** Implement production `BrokVaultManager` conforming to `BrokVaultStoring`, replacing `InMemoryVaultStore`. Derive per-write encryption keys with `HKDF<SHA256>` (32-byte random salt + `org.brokbot.vault.v1` AAD) wrapped by `KeychainBiometricKeyProvider` (`LAContext` Touch ID / biometric prompt) or `PassphraseVaultKeyProvider`, persisting atomic `0600` AES-256-GCM encrypted `vault.enc` for BYOK API keys and permanent memory entries with tamper detection and memory zeroing (`VaultAndContextTests.swift`).
+  - **1C — Dual-Space Context Engine, Prompt Assembler & Memory Inspector:** Upgrade `WorkingContextStore` with rolling token-budget compaction (`rollingSummary()` / `contextWindowMessages()` / `replaceMessage(...)`); augment `PermanentContextEnclaveManager` with automatic category inference, `Store`/`Update`/`Forget` commands, `SemanticCompactor` cosine similarity deduplication & superseding consolidation, and `DualSpacePromptAssembler`; add a full Settings Memory Inspector (live search/filter, inline edit via `updateFact`, manual compact, cryptographic purge).
+  - **1D — BYOK Multi-Model Streaming & Tool Calling Engine:** Implement `BYOKTypes`, incremental UTF-8 `SSEStreamParser`, and `URLSession` async/await `BYOKModelClient` streaming adapters with `PartialToolCallAccumulator` and normalized function/tool-call schemas for **OpenRouter**, **Google Gemini**, **Anthropic Claude**, **OpenAI**, and **NVIDIA NIM**, wired to vault-stored API keys and token usage counters (`BYOKModelClientTests.swift`).
+  - **1E — Headless `SMAppService` Open-at-Login Daemon, Menu Bar Popover, Global Hotkey (`Cmd+Shift+B`), Compute Settings, and `UNUserNotificationCenter` Local Notifications:** Complete `SMAppService` login-item registration with `--background` headless boot (`BrokBotAppDelegate`), `brok-menubar-template.svg` status icon + `MenuBarPopoverView`, `GlobalHotkeyManager` (`Carbon.RegisterEventHotKey` for `Cmd+Shift+B`), persisted thread pool (`1`/`2`/`4`/`Auto`) & ANE/Metal toggles, and `LocalNotificationSpec` + bundle-safe `LocalNotificationManager` (`UNUserNotificationCenter`).
+- **Target Paths:** `macos/Sources/BrokBotCore/**`, `macos/Sources/BrokBotApp/**`, `macos/Tests/BrokBotCoreTests/**`, `assets/icons/svg/**`, `assets/README.md`, `android/app/src/main/res/drawable/ic_brok_notification.xml`, `docs/IMPLEMENTATION_PLAN.md`, `README.md`.
+- **Dependencies:** Phase `0` exit gate (`0C`, `0E`). Within Phase 1: `1A` and `1B` run in parallel; `1C` and `1D` depend on `1B`; `1E` depends on `1A`.
+- **Exit Criteria / Verification Gate:**
+  - Touch ID / Keychain unlocks `vault.enc` and blocks plaintext read while locked; tampered envelopes raise `.integrityCheckFailed`; forgetting a fact zeroes/purges its stored record (`VaultAndContextTests`).
+  - `BYOKModelClient` SSE streaming returns live tokens and tool-call JSON across all 5 BYOK providers (`BYOKModelClientTests`).
+  - Launching with `--background` creates the menu bar item (`brok-menubar-template.svg`) with zero open windows; pressing `Cmd+Shift+B` toggles/reveals the Liquid Glass window cleanly; `cd macos && swift test && swift build` and `bash scripts/build-macos.sh` pass with strict `codesign --verify`.
+
+---
+
+### Phase 2: Server-Side Modular Connector Marketplace & Core Bridges (Status: Active / Next)
+
+- **Goal:** Enable dynamic installation, cryptographic verification, and user-approved execution of third-party connectors (Blender 3D, Google Workspace, and MCP servers) without requiring app rebuilds.
+- **Sub-Phases & Concrete Deliverables:**
+  - **2A — Remote Manifest Registry, Ed25519 Signature Verification & Dynamic Setup UI:** Build remote `catalog.json` fetcher/cache, CryptoKit Ed25519 manifest signature verifier (`signature.algorithm == "ed25519"`), schema validator matching `connector-manifest.schema.json`, and dynamic Setup UI renderer driven by `auth.setupFields` and permission disclosures.
+  - **2B — Dynamic Tool Router & Interactive Approval Gate (Chat Cards + Actionable Notifications):** Implement `ToolRouter` bridging LLM tool calls to installed connector runtimes; pause any tool flagged `requiresApproval: true` to present an inline Liquid Glass Approval Card (displaying args/`bpy` code diff) or actionable `UNUserNotificationCenter` (`Approve` / `Deny`) banner.
+  - **2C — Blender 3D Local Socket Bridge (`127.0.0.1:9876` JSON-RPC 2.0 + Python addon + inline PNG render preview):** Build async TCP JSON-RPC 2.0 client targeting `127.0.0.1:9876`, ship companion Blender `bpy` socket server addon under `marketplace/addons/blender/`, and render returned PNG viewport buffers inline inside chat messages.
+  - **2D — Google Workspace Connector (OAuth 2.0 PKCE loopback + Gmail/Calendar REST + incremental delta polling):** Implement `127.0.0.1` loopback OAuth 2.0 PKCE authenticator storing refresh tokens in `BrokVaultManager`, Gmail & Google Calendar REST clients, incremental `historyId` / `syncToken` background polling, and morning briefing routine synthesis.
+  - **2E — MCP Client (Streamable HTTP + Local Stdio runner):** Integrate `modelcontextprotocol/swift-sdk` in `Package.swift` for remote Streamable HTTP MCP servers and sandboxed local `Process` stdio runners (Python/Node) scheduled on `BrokComputeEngine`.
+- **Target Paths:** `marketplace/**`, `macos/Package.swift`, `macos/Sources/BrokBotCore/Marketplace/**`, `macos/Sources/BrokBotCore/Connectors/**`, `macos/Sources/BrokBotApp/UI/**`, `macos/Tests/BrokBotCoreTests/**`.
+- **Dependencies:** Phase `1` (`1B`, `1C`, `1D`, `1E`). Within Phase 2: `2A` unlocks `2B`; `2C`, `2D`, and `2E` execute in parallel once `2B` defines the `ToolRouter` & Approval Gate contract.
+- **Exit Criteria / Verification Gate:**
+  - Tampered manifests fail Ed25519 verification and are rejected before tool registration.
+  - Every `requiresApproval: true` call (`blender_execute_script`, `gmail_send_message`, `gcal_create_event`) blocks execution until explicit user approval via chat card or local notification.
+  - End-to-end tests verify JSON-RPC 2.0 round-trip with a mock Blender socket returning PNG bytes, Google Workspace PKCE token exchange + delta sync, and MCP tool discovery over Streamable HTTP and stdio.
+
+---
+
+### Phase 3: Native Android App & Silent Background Engine
+
+- **Goal:** Bring full feature parity—Liquid Glass Compose UI, StrongBox hardware security, Dual-Space Context, BYOK models, remote connectors, and battery-aware background execution—to Android phones and tablets.
+- **Sub-Phases & Concrete Deliverables:**
+  - **3A — Compose Liquid Glass Responsive Phone/Tablet UI (`haze`):** Build adaptive `WindowSizeClass` phone/tablet layouts using Haze 1.3.1 (`hazeSource` + `clip(shape).hazeEffect`), multi-bot drawer, streaming markdown cards, inline tool Approval Cards, and Settings + Memory Inspector sheets.
+  - **3B — Android Keystore StrongBox + Tink Hardware Vault & Dual-Space Context Parity:** Replace in-memory storage with `BiometricPrompt` + Android Keystore (StrongBox-backed where supported) + Google Tink AEAD encrypted storage (`vault.enc` / encrypted DataStore); reach 100% behavioral parity with macOS `WorkingContextStore`, `PermanentMemoryManager`, and `SemanticCompactor`.
+  - **3C — BYOK Multi-Model & Remote Connector Runtime Parity (Custom Tabs PKCE, Remote MCP):** Implement Kotlin SSE streaming + tool-calling clients for all 5 BYOK providers, marketplace catalog fetcher + Ed25519 verifier, Android Custom Tabs OAuth 2.0 PKCE loopback/redirect for Google Workspace, and remote Streamable HTTP MCP client.
+  - **3D — Silent `BootReceiver`, `WorkManager` Pollers, `AlarmManager` Exact Routines & Actionable `NotificationManager`:** Ensure `BrokBootReceiver` initializes `WorkManager` delta polling chains silently without launching `MainActivity`, schedule exact morning routines via `AlarmManager`, and wire `NotificationManager` `[Approve]` / `[Deny]` action receivers.
+  - **3E — Coroutines Thread Pool (`1`/`2`/`4`/`Auto`) & NNAPI/Vulkan Hardware Acceleration:** Bind `BrokComputeEngine` to a bounded `ExecutorCoroutineDispatcher` (`1`/`2`/`4`/`Auto`) and implement NNAPI/Vulkan delegate toggles with automatic CPU fallback under Android Battery Saver.
+- **Target Paths:** `android/gradle/libs.versions.toml`, `android/app/build.gradle.kts`, `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/java/org/brokbot/android/**`, `android/app/src/test/java/org/brokbot/android/**`.
+- **Dependencies:** Phase `0` (`0D`, `0E`) and protocol/schema contracts frozen in Phase `1`–`2` (`1D`, `2A`, `2B`). Within Phase 3: `3A` and `3B` run in parallel; `3C` and `3D` depend on `3B`; `3E` runs in parallel with `3C`/`3D`.
+- **Exit Criteria / Verification Gate:**
+  - `./gradlew testDebugUnitTest connectedDebugAndroidTest` (or emulator verification) confirms StrongBox/Keystore vault gating, Store/Update/Forget parity, and `WorkManager` / `AlarmManager` scheduling.
+  - Simulated `BOOT_COMPLETED` broadcast starts background workers with zero foreground activity launch and `< 25 MB` idle memory footprint.
+  - Responsive tablet & phone screenshots validate Haze 1.3.1 glass blur without clipping or overdraw regressions.
+
+---
+
+### Phase 4: Decentralized Sync, Local Voice & v1.0 Release
+
+- **Goal:** Connect macOS and Android devices via local-first encrypted CRDT sync, add hardware-accelerated on-device voice interaction, audit security & performance against all NFRs, and ship v1.0 distribution packages.
+- **Sub-Phases & Concrete Deliverables:**
+  - **4A — Automerge CRDT Document Schema & E2EE State Convergence:** Integrate `automerge-swift` and `automerge-kt` with a shared schema for bot personas, threads, and permanent memory tombstones/updates; apply envelope E2EE encryption before peer exchange.
+  - **4B — LAN P2P Discovery (Bonjour/NSD mDNS + mTLS WebSockets + QR Pairing):** Implement `_brokbot._tcp` mDNS discovery (`NWBrowser`/`NWListener` on macOS, `NsdManager` on Android), QR-code mutual TLS (mTLS) certificate pinning/pairing, WebSocket delta sync, and optional E2EE relay fallback.
+  - **4C — On-Device Voice Mode (WhisperKit + CoreML/ANE `Cmd+D` on macOS, on-device speech on Android):** Integrate `Argmax/WhisperKit` accelerated by CoreML/ANE bound to `Cmd+D` dictation on macOS; wire Android on-device `SpeechRecognizer` / local Whisper delegate accelerated by NNAPI/Vulkan with provider audio fallback.
+  - **4D — Security Audit & Performance Profiling:** Verify Argon2id/HKDF, AES-256-GCM, Tink, Ed25519 manifest signatures, and mTLS peer auth; profile cold boot (`< 1.0 s`), background window reveal (`< 200 ms`), idle RAM (`< 45 MB` macOS, `< 25 MB` Android), and battery-throttled polling.
+  - **4E — v1.0 Packaging & Distribution:** Ship Universal (`arm64` + `x86_64`) ad-hoc signed `.dmg` / `.zip` via `scripts/build-macos.sh`, Homebrew Cask formula (`brew install --cask brok-bot`) with Gatekeeper quarantine removal, signed Universal `.apk`, and F-Droid reproducible build metadata.
+- **Target Paths:** `macos/**`, `android/**`, `scripts/**`, `docs/IMPLEMENTATION_PLAN.md`, `README.md`.
+- **Dependencies:** Phase `1`, Phase `2`, and Phase `3` complete. Within Phase 4: `4A` unlocks `4B`; `4C` runs in parallel with `4A`–`4B`; `4D` gates `4E`.
+- **Exit Criteria / Verification Gate:**
+  - Two-device macOS ↔ Android sync test converges edits and memory deletions deterministically over LAN mTLS WebSockets with zero plaintext exposure on wire.
+  - Performance benchmarks pass all PRD Section 5 NFR targets (`< 200 ms` reveal, `< 1.0 s` cold boot, `< 45 MB` macOS / `< 25 MB` Android idle RAM).
+  - Clean-machine installation tests pass for Homebrew Cask `.dmg` on macOS and direct Universal `.apk` / F-Droid build on Android.
+
+---
+
+### Parallelization & Ownership Matrix
+
+To maximize throughput without file-write conflicts, independent sub-phases map cleanly to isolated workspace paths and parallel engineering streams:
+
+| Phase | Parallel Stream A (Brand / Docs / Schema) | Parallel Stream B (macOS / Swift) | Parallel Stream C (Android / Kotlin) | Synchronization / Merge Gate |
+| :---: | :--- | :--- | :--- | :--- |
+| **Phase 0** *(Completed)* | `0A` (`assets/**`), `0B` (`.gitignore`, `LICENSE`, `docs/`, `README.md`, `marketplace/**`) | `0C` (`macos/**`, `scripts/build-macos.sh`) | `0D` (`android/**`) | `0E` Full cross-platform build, test & link verification |
+| **Phase 1** *(Completed)* | 17-icon SVG suite (`assets/icons/svg/`), `assets/README.md`, `docs/` (`v1.3.0`), `README.md` | `1A` (`BrokBotApp/UI/`) ∥ `1B` (`BrokBotCore/Vault/`) → `1C`, `1D` → `1E` | `ic_brok_notification.xml` drawable | macOS Touch ID vault + 5-provider SSE streaming + `Cmd+Shift+B` & signed `.app` bundle |
+| **Phase 2** *(Active)* | `2A` (`marketplace/manifests/**`, registry) | `2B` (`ToolRouter`, Approval UI) → `2C` (Blender), `2D` (Google), `2E` (MCP) | — | Ed25519 verification + interactive Approval Gate E2E suite |
+| **Phase 3** | — | — | `3A` (`ui/`) ∥ `3B` (`Vault`, `Context`) → `3C`, `3D`, `3E` | Android APK + `BOOT_COMPLETED` silent worker & StrongBox check |
+| **Phase 4** | `4D` (Audit & profiling reports), `4E` (Homebrew/F-Droid specs) | `4A` (Swift Automerge), `4B` (Bonjour/mTLS), `4C` (WhisperKit) | `4A` (Kotlin Automerge), `4B` (NSD/mTLS), `4C` (On-device speech) | Two-device E2EE CRDT sync + v1.0 release artifact verification |
 
 ---
 

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Headless Open-Corner Frame (No Visible Main Window) -->
+  <path d="M 4 8.5 V 6.5 A 2.5 2.5 0 0 1 6.5 4 H 8.5" />
+  <path d="M 15.5 4 H 17.5 A 2.5 2.5 0 0 1 20 6.5 V 8.5" />
+  <path d="M 20 15.5 V 17.5 A 2.5 2.5 0 0 1 17.5 20 H 15.5" />
+  <path d="M 8.5 20 H 6.5 A 2.5 2.5 0 0 1 4 17.5 V 15.5" />
+  <!-- Active Background Daemon Pulse -->
+  <path d="M 6.5 12.5 H 8.75 L 10.5 8.75 L 13.5 15.75 L 15.25 12.5 H 17.5" />
+</svg>

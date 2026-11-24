@@ -1,0 +1,108 @@
+{
+  "schemaVersion": "1.0.0",
+  "updatedAt": "2026-11-24T00:00:00Z",
+  "connectors": [
+    {
+      "id": "blender-3d",
+      "name": "Blender 3D Bridge",
+      "version": "1.0.0",
+      "description": "Local TCP JSON-RPC 2.0 bridge for Blender scene inspection, guarded bpy script execution, and inline viewport PNG preview rendering.",
+      "manifestPath": "manifests/blender-3d.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "tcp_jsonrpc",
+        "host": "127.0.0.1",
+        "port": 9876
+      },
+      "auth": {
+        "type": "none",
+        "scopes": []
+      },
+      "permissions": [
+        "local_socket",
+        "execute_bpy_script",
+        "render_viewport"
+      ],
+      "tools": [
+        {
+          "name": "blender_get_scene_info",
+          "description": "Inspect active Blender objects, cameras, lights, materials, and render settings.",
+          "requiresApproval": false
+        },
+        {
+          "name": "blender_execute_script",
+          "description": "Execute a generated Python (bpy) script inside the connected Blender instance.",
+          "requiresApproval": true
+        },
+        {
+          "name": "blender_render_preview",
+          "description": "Render the active camera or viewport and return an inline PNG buffer.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "google-workspace",
+      "name": "Google Workspace",
+      "version": "1.0.0",
+      "description": "Client-side Gmail and Google Calendar integration via OAuth 2.0 PKCE loopback auth and battery-aware incremental delta polling.",
+      "manifestPath": "manifests/google-workspace.json",
+      "platforms": ["macos", "android"],
+      "transport": {
+        "type": "rest_http",
+        "baseUrl": "https://www.googleapis.com",
+        "pollingIntervalSeconds": 300
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "authorizationEndpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+        "tokenEndpoint": "https://oauth2.googleapis.com/token",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [
+          "https://www.googleapis.com/auth/gmail.readonly",
+          "https://www.googleapis.com/auth/gmail.send",
+          "https://www.googleapis.com/auth/calendar.readonly",
+          "https://www.googleapis.com/auth/calendar.events"
+        ]
+      },
+      "permissions": [
+        "gmail.readonly",
+        "gmail.send",
+        "calendar.readonly",
+        "calendar.events"
+      ],
+      "tools": [
+        {
+          "name": "gmail_list_messages",
+          "description": "Query primary unread or prioritized Gmail messages for triage and morning briefings.",
+          "requiresApproval": false
+        },
+        {
+          "name": "gmail_send_message",
+          "description": "Send an email reply or new message through Gmail after explicit user approval.",
+          "requiresApproval": true
+        },
+        {
+          "name": "gcal_list_events",
+          "description": "Fetch upcoming Google Calendar meetings and detect scheduling conflicts.",
+          "requiresApproval": false
+        },
+        {
+          "name": "gcal_create_event",
+          "description": "Create or modify a Google Calendar event after explicit user approval.",
+          "requiresApproval": true
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    }
+  ]
+}

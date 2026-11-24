@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Isometric 3D Scene Mesh -->
+  <path d="M 12 3.5 L 19.5 7.75 V 16.25 L 12 20.5 L 4.5 16.25 V 7.75 Z" />
+  <!-- Local Socket Bridge Origin & Viewport Spokes -->
+  <circle cx="12" cy="12" r="2.25" />
+  <path d="M 12 14.25 V 20.5" />
+  <path d="M 13.96 10.89 L 19.5 7.75" />
+  <path d="M 10.04 10.89 L 4.5 7.75" />
+</svg>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Silicon NPU / Metal Compute Core -->
+  <rect x="5.5" y="5.5" width="13" height="13" rx="2.5" />
+  <!-- Multithread / Pin Connectors -->
+  <path d="M 9.25 2.75 V 5.5" />
+  <path d="M 14.75 2.75 V 5.5" />
+  <path d="M 9.25 18.5 V 21.25" />
+  <path d="M 14.75 18.5 V 21.25" />
+  <path d="M 2.75 9.25 H 5.5" />
+  <path d="M 2.75 14.75 H 5.5" />
+  <path d="M 18.5 9.25 H 21.25" />
+  <path d="M 18.5 14.75 H 21.25" />
+  <!-- Hardware Acceleration Bolt -->
+  <path d="M 13 8.25 L 9.5 12 H 14.5 L 11 15.75" />
+</svg>
