@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Studio Voice Microphone -->
+  <rect x="9" y="3" width="6" height="10" rx="3" />
+  <path d="M 5.5 10.5 A 6.5 6.5 0 0 0 18.5 10.5" />
+  <path d="M 12 17 V 21" />
+  <path d="M 8.5 21 H 15.5" />
+  <!-- Flanking Audio Waveform Ticks -->
+  <path d="M 3 9 V 12" />
+  <path d="M 21 9 V 12" />
+</svg>

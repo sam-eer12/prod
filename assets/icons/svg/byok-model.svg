@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- BYOK API Key -->
+  <circle cx="7.5" cy="14.5" r="3.5" />
+  <path d="M 11 14.5 H 20.5" />
+  <path d="M 17 14.5 V 17.5" />
+  <path d="M 20.5 14.5 V 17" />
+  <!-- LLM Model Spark -->
+  <path d="M 15.5 2.75 L 16.75 5.25 L 19.25 6.5 L 16.75 7.75 L 15.5 10.25 L 14.25 7.75 L 11.75 6.5 L 14.25 5.25 Z" />
+</svg>

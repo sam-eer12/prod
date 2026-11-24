@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Top Compression Arrow -->
+  <path d="M 12 2.75 V 7.5" />
+  <path d="M 9.25 5.25 L 12 8 L 14.75 5.25" />
+  <!-- Compacted Memory Capsule -->
+  <rect x="4.5" y="10" width="15" height="4" rx="2" />
+  <path d="M 8.5 12 H 15.5" />
+  <!-- Bottom Compression Arrow -->
+  <path d="M 12 21.25 V 16.5" />
+  <path d="M 9.25 18.75 L 12 16 L 14.75 18.75" />
+</svg>

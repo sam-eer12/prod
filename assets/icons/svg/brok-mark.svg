@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <radialGradient id="bg-grad" cx="28%" cy="22%" r="88%">
+      <stop offset="0%" stop-color="#222633" />
+      <stop offset="55%" stop-color="#14161D" />
+      <stop offset="100%" stop-color="#0B0C10" />
+    </radialGradient>
+    <radialGradient id="ambient-cyan" cx="22%" cy="18%" r="55%">
+      <stop offset="0%" stop-color="#00E5FF" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#00E5FF" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="head-grad" cx="44%" cy="38%" r="72%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="68%" stop-color="#EEF1F6" />
+      <stop offset="100%" stop-color="#CFD6E4" />
+    </radialGradient>
+    <linearGradient id="hat-crown-grad" x1="0%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#3B404E" />
+      <stop offset="48%" stop-color="#191C24" />
+      <stop offset="100%" stop-color="#0B0C10" />
+    </linearGradient>
+    <linearGradient id="hat-brim-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#323744" />
+      <stop offset="50%" stop-color="#14161D" />
+      <stop offset="100%" stop-color="#0B0C10" />
+    </linearGradient>
+    <linearGradient id="gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCE694" />
+      <stop offset="48%" stop-color="#D4AF37" />
+      <stop offset="100%" stop-color="#906D16" />
+    </linearGradient>
+    <linearGradient id="glass-border" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.34" />
+      <stop offset="45%" stop-color="#00E5FF" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#D4AF37" stop-opacity="0.24" />
+    </linearGradient>
+    <clipPath id="badge-clip">
+      <rect x="2" y="2" width="124" height="124" rx="28" />
+    </clipPath>
+  </defs>
+
+  <!-- Dark Squircle Liquid Glass Badge -->
+  <rect x="2" y="2" width="124" height="124" rx="28" fill="url(#bg-grad)" />
+  <rect x="2" y="2" width="124" height="124" rx="28" fill="url(#ambient-cyan)" />
+
+  <g clip-path="url(#badge-clip)">
+    <!-- Brok Mascot Dome Head -->
+    <path d="M -8 66 C 12 46, 52 34, 84 40 C 110 46, 126 68, 134 102 L 134 134 L -8 134 Z" fill="url(#head-grad)" />
+    <!-- Subtle Forehead Shadow Hugging Brim -->
+    <path d="M 12 49 C 36 53, 66 46, 86 38 C 84 44, 62 52, 36 55 C 22 56, 12 54, 12 49 Z" fill="#0D0E12" fill-opacity="0.10" />
+
+    <!-- Tilted Bowler Hat -->
+    <g transform="translate(49, 40) rotate(-11)">
+      <path d="M -33 2 C -33 -21, -16 -29, 0 -29 C 16 -29, 33 -21, 33 2 Z" fill="url(#hat-crown-grad)" />
+      <!-- Crown Specular Sheen -->
+      <ellipse cx="-8" cy="-16" rx="14" ry="6" transform="rotate(-14 -8 -16)" fill="#FFFFFF" fill-opacity="0.08" />
+      <!-- Satin Hat Ribbon Band -->
+      <path d="M -33 -2.5 Q 0 2, 33 -2.5 L 33 3 Q 0 7.5, -33 3 Z" fill="#181B22" />
+      <path d="M -33 -2.5 Q 0 2, 33 -2.5" stroke="#4B5263" stroke-width="0.9" stroke-opacity="0.65" />
+      <!-- Rolled Bowler Brim -->
+      <path d="M -44 -1.5 C -45 7.5, -20 11.5, 0 11.5 C 20 11.5, 45 7.5, 44 -1.5 C 43 -5, 37 -5, 33 -1 C 22 6, -22 6, -33 -1 C -37 -5, -43 -5, -44 -1.5 Z" fill="url(#hat-brim-grad)" />
+      <path d="M -42 -2 C -38 4.5, -18 8, 0 8 C 18 8, 38 4.5, 42 -2" stroke="#545B6E" stroke-width="0.9" stroke-opacity="0.5" fill="none" />
+    </g>
+
+    <!-- Oval Eyes -->
+    <rect x="47.5" y="64" width="18.5" height="35" rx="9.25" transform="rotate(-23 56.75 81.5)" fill="#0D0E12" />
+    <rect x="88" y="49" width="15" height="31" rx="7.5" transform="rotate(-25 95.5 64.5)" fill="#0D0E12" />
+
+    <!-- Golden Monocle & Glass Lens -->
+    <circle cx="102" cy="75.5" r="13.5" fill="#D8ECFF" fill-opacity="0.16" />
+    <path d="M 94 67.5 A 10.5 10.5 0 0 1 108.5 66" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.65" fill="none" />
+    <circle cx="102" cy="75.5" r="13.5" stroke="url(#gold-grad)" stroke-width="2.75" fill="none" />
+
+    <!-- Monocle Eyelet & Gold Chain -->
+    <circle cx="116.5" cy="78.5" r="2.1" stroke="url(#gold-grad)" stroke-width="1.4" fill="none" />
+    <path d="M 117 81 C 118.5 92, 120.5 106, 124.5 121" stroke="url(#gold-grad)" stroke-width="1.9" stroke-linecap="round" stroke-dasharray="2.5 2.4" fill="none" />
+
+    <!-- Curved Handlebar Mustache -->
+    <g transform="translate(88.5, 102.5) rotate(-8)">
+      <path d="M 0 -2.2 C -3.5 -4.8, -7.8 -2.8, -11.4 -0.4 C -14.2 1.5, -17.2 0.7, -17.6 -2.1 C -19.2 0.1, -17.5 4.4, -12.8 4.4 C -7.4 4.4, -3.2 1.8, 0 0.7 C 3.2 1.8, 7.4 4.4, 12.8 4.4 C 17.5 4.4, 19.2 0.1, 17.6 -2.1 C 17.2 0.7, 14.2 1.5, 11.4 -0.4 C 7.8 -2.8, 3.5 -4.8, 0 -2.2 Z" fill="#0D0E12" />
+    </g>
+  </g>
+
+  <!-- Liquid Glass Specular Rim -->
+  <rect x="2.75" y="2.75" width="122.5" height="122.5" rx="27.25" stroke="url(#glass-border)" stroke-width="1.5" />
+</svg>

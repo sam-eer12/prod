@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Octagonal Approval Gate -->
+  <path d="M 8.25 3 H 15.75 L 21 8.25 V 15.75 L 15.75 21 H 8.25 L 3 15.75 V 8.25 Z" />
+  <!-- Explicit Approval Checkmark -->
+  <path d="M 8.5 12.25 L 11 14.75 L 15.75 9.75" />
+</svg>

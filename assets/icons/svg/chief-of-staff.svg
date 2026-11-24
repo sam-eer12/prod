@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Executive Crown -->
+  <path d="M 7.5 6.75 L 9 3.5 L 12 5.5 L 15 3.5 L 16.5 6.75 Z" />
+  <!-- Orchestrator Visor -->
+  <rect x="4.5" y="9" width="15" height="9.5" rx="3.75" />
+  <!-- Expressive Pill Eyes -->
+  <path d="M 9.25 12.75 V 14.75" />
+  <path d="M 14.75 12.75 V 14.75" />
+  <!-- Command Base -->
+  <path d="M 9 21 H 15" />
+</svg>

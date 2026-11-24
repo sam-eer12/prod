@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Calendar Badge -->
+  <rect x="13" y="4" width="7.5" height="7" rx="1.75" />
+  <path d="M 15.25 2.75 V 4.75" />
+  <path d="M 18.25 2.75 V 4.75" />
+  <path d="M 13 7.25 H 20.5" />
+  <!-- Gmail / Inbox Envelope -->
+  <path d="M 13 7.5 H 6 A 2.5 2.5 0 0 0 3.5 10 V 17.5 A 2.5 2.5 0 0 0 6 20 H 16.5 A 2.5 2.5 0 0 0 19 17.5 V 11" />
+  <path d="M 4 9.75 L 10.75 14 L 14.25 11.75" />
+</svg>

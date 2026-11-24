@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Specialist Antenna -->
+  <path d="M 12 3.25 V 6" />
+  <circle cx="12" cy="2.75" r="0.75" />
+  <!-- Bot Head Visor -->
+  <rect x="4.5" y="6" width="15" height="12.5" rx="4" />
+  <!-- Sensor Side Nodes -->
+  <path d="M 2.5 11 V 13.5" />
+  <path d="M 21.5 11 V 13.5" />
+  <!-- Focused Reticle / Visor Eyes -->
+  <path d="M 9 11.25 V 13.25" />
+  <path d="M 15 11.25 V 13.25" />
+  <path d="M 9.5 15.75 H 14.5" />
+  <!-- Base Pedestal -->
+  <path d="M 8.5 21 H 15.5" />
+</svg>

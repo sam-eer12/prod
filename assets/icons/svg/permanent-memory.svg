@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Left Memory Hemisphere -->
+  <path d="M 12 5 A 3.75 3.75 0 0 0 5.5 7.5 A 3.25 3.25 0 0 0 4 13.25 A 3.25 3.25 0 0 0 6.5 16.4 A 3.25 3.25 0 0 0 12 19" />
+  <!-- Right Memory Hemisphere -->
+  <path d="M 12 5 A 3.75 3.75 0 0 1 18.5 7.5 A 3.25 3.25 0 0 1 20 13.25 A 3.25 3.25 0 0 1 17.5 16.4 A 3.25 3.25 0 0 1 12 19" />
+  <!-- Central Enclave Spine & Persistent Nodes -->
+  <path d="M 12 5 V 19" />
+  <path d="M 8.5 9.5 C 9.75 9.5, 10.5 10.25, 10.5 11.5" />
+  <path d="M 15.5 9.5 C 14.25 9.5, 13.5 10.25, 13.5 11.5" />
+  <path d="M 8 14.25 H 9.75" />
+  <path d="M 14.25 14.25 H 16" />
+</svg>
