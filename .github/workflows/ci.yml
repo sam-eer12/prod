@@ -1,0 +1,142 @@
+name: Brok Bot CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  marketplace-validate:
+    name: Marketplace JSON & Schema
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install jsonschema validator
+        run: python3 -m pip install --no-cache-dir jsonschema
+
+      - name: Validate marketplace JSON, Draft 2020-12 manifests, and bundled catalog sync
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+
+          root = Path(".")
+          schema_path = root / "marketplace/schema/connector-manifest.schema.json"
+          schema = json.loads(schema_path.read_text(encoding="utf-8"))
+          Draft202012Validator.check_schema(schema)
+          validator = Draft202012Validator(schema)
+
+          json_files = sorted((root / "marketplace").rglob("*.json"))
+          bundled_catalog_path = root / "macos/Sources/BrokBotApp/Resources/catalog.json"
+          json_files.append(bundled_catalog_path)
+
+          for path in json_files:
+              json.loads(path.read_text(encoding="utf-8"))
+              print(f"Valid JSON: {path}")
+
+          for manifest_path in sorted((root / "marketplace/manifests").glob("*.json")):
+              manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+              validator.validate(manifest)
+              print(f"Valid manifest schema: {manifest_path}")
+
+          root_catalog = json.loads((root / "marketplace/catalog.json").read_text(encoding="utf-8"))
+          bundled_catalog = json.loads(bundled_catalog_path.read_text(encoding="utf-8"))
+          assert root_catalog == bundled_catalog, (
+              "macos/Sources/BrokBotApp/Resources/catalog.json is out of sync with marketplace/catalog.json"
+          )
+
+          for connector in root_catalog.get("connectors", []):
+              validator.validate(connector)
+              print(f"Valid catalog connector: {connector.get('id')}")
+          PY
+
+  macos-ci:
+    name: macOS (Swift 6 Build, Tests & App Bundle)
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Print Swift & Xcode versions
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Cache SwiftPM build artifacts
+        uses: actions/cache@v4
+        with:
+          path: macos/.build
+          key: ${{ runner.os }}-spm-${{ hashFiles('macos/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Run SwiftPM unit tests
+        working-directory: macos
+        run: swift test
+
+      - name: Build macOS executable
+        working-directory: macos
+        run: swift build
+
+      - name: Assemble and ad-hoc sign BrokBot.app
+        run: |
+          bash scripts/build-macos.sh
+          codesign --verify --deep --strict macos/dist/BrokBot.app
+
+      - name: Package BrokBot.app artifact
+        run: ditto -c -k --sequesterRsrc --keepParent macos/dist/BrokBot.app macos/dist/BrokBot-macos.zip
+
+      - name: Upload macOS app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: brokbot-macos-app
+          path: macos/dist/BrokBot-macos.zip
+          retention-days: 7
+
+  android-ci:
+    name: Android (JDK 17 Unit Tests & Debug APK)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Android unit tests and assemble debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest assembleDebug --stacktrace
+
+      - name: Upload Android debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: brokbot-android-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
