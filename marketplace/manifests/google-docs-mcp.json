@@ -1,0 +1,52 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "google-docs-mcp",
+  "name": "Google Docs (Read-Only · Personal Mode)",
+  "version": "1.0.0",
+  "description": "Google's official stateless Streamable HTTP MCP server for Google Docs on the free Standard Tier (5,000 requests/day per Google Cloud project, Personal Mode OAuth).",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://docsmcp.googleapis.com/mcp/v1"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "authorizationEndpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+    "tokenEndpoint": "https://oauth2.googleapis.com/token",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [
+      "https://www.googleapis.com/auth/documents.readonly"
+    ],
+    "setupFields": [
+      {
+        "key": "client_id",
+        "label": "Google Cloud OAuth Desktop Client ID (Personal Mode)",
+        "secret": false,
+        "required": true,
+        "placeholder": "1234567890-abc.apps.googleusercontent.com"
+      },
+      {
+        "key": "client_secret",
+        "label": "Google OAuth Client Secret (Optional)",
+        "secret": true,
+        "required": false,
+        "placeholder": "GOCSPX-..."
+      }
+    ]
+  },
+  "permissions": [
+    "documents.readonly"
+  ],
+  "tools": [
+    {
+      "name": "get_document",
+      "description": "Read Google Docs document content and structure on demand via Google's official stateless MCP server.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "sentry-mcp",
+  "name": "Sentry (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Sentry hosted Streamable HTTP MCP server for inspecting issues, stack traces, projects, and events via OAuth 2.1 + PKCE.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.sentry.dev/mcp"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": []
+  },
+  "permissions": [
+    "sentry.issues.read",
+    "sentry.projects.read",
+    "sentry.events.read"
+  ],
+  "tools": [
+    {
+      "name": "list_issues",
+      "description": "Search and inspect Sentry issues, stack traces, and error events.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

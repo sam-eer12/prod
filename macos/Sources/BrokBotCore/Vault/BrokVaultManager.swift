@@ -8,12 +8,14 @@ public struct VaultPayload: Codable, Sendable, Equatable {
     public var schemaVersion: Int
     public var memoryEntries: [MemoryEntry]
     public var providerAPIKeys: [String: String]
+    public var connectorSecrets: [String: [String: String]]
     public var updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion
         case memoryEntries
         case providerAPIKeys
+        case connectorSecrets
         case updatedAt
     }
 
@@ -21,11 +23,13 @@ public struct VaultPayload: Codable, Sendable, Equatable {
         schemaVersion: Int = 1,
         memoryEntries: [MemoryEntry] = [],
         providerAPIKeys: [String: String] = [:],
+        connectorSecrets: [String: [String: String]] = [:],
         updatedAt: Date = Date()
     ) {
         self.schemaVersion = schemaVersion
         self.memoryEntries = memoryEntries
         self.providerAPIKeys = providerAPIKeys
+        self.connectorSecrets = connectorSecrets
         self.updatedAt = updatedAt
     }
 
@@ -34,6 +38,7 @@ public struct VaultPayload: Codable, Sendable, Equatable {
         self.schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         self.memoryEntries = try container.decodeIfPresent([MemoryEntry].self, forKey: .memoryEntries) ?? []
         self.providerAPIKeys = try container.decodeIfPresent([String: String].self, forKey: .providerAPIKeys) ?? [:]
+        self.connectorSecrets = try container.decodeIfPresent([String: [String: String]].self, forKey: .connectorSecrets) ?? [:]
         self.updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
     }
 }
@@ -379,6 +384,56 @@ public actor BrokVaultManager: BrokVaultStoring {
             guard let stored = payload.providerAPIKeys[provider.rawValue] else { return false }
             return !stored.isEmpty
         }
+    }
+
+    // MARK: - Connector Secret Storage
+
+    /// Retrieves a single secret value for `connectorID` and `key`.
+    public func connectorSecret(connectorID: String, key secretKey: String) async throws -> String? {
+        let master = try requireUnlockedKey()
+        let payload = try readPayload(using: master)
+        guard let value = payload.connectorSecrets[connectorID]?[secretKey], !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    /// Retrieves all stored secrets for `connectorID`.
+    public func connectorSecrets(for connectorID: String) async throws -> [String: String] {
+        let master = try requireUnlockedKey()
+        let payload = try readPayload(using: master)
+        return payload.connectorSecrets[connectorID] ?? [:]
+    }
+
+    /// Merges or overwrites secrets for `connectorID` inside `vault.enc`.
+    public func setConnectorSecrets(_ secrets: [String: String], for connectorID: String) async throws {
+        let master = try requireUnlockedKey()
+        var payload = try readPayload(using: master)
+        var existing = payload.connectorSecrets[connectorID] ?? [:]
+        for (secretKey, rawValue) in secrets {
+            let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                existing.removeValue(forKey: secretKey)
+            } else {
+                existing[secretKey] = trimmed
+            }
+        }
+        if existing.isEmpty {
+            payload.connectorSecrets.removeValue(forKey: connectorID)
+        } else {
+            payload.connectorSecrets[connectorID] = existing
+        }
+        payload.updatedAt = Date()
+        try writePayload(payload, using: master)
+    }
+
+    /// Deletes all stored secrets for `connectorID` and rewrites `vault.enc`.
+    public func deleteConnectorSecrets(for connectorID: String) async throws {
+        let master = try requireUnlockedKey()
+        var payload = try readPayload(using: master)
+        payload.connectorSecrets.removeValue(forKey: connectorID)
+        payload.updatedAt = Date()
+        try writePayload(payload, using: master)
     }
 
     // MARK: - Private Encryption & Atomic I/O

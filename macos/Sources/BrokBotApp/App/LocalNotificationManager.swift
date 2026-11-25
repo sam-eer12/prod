@@ -10,8 +10,8 @@ final class LocalNotificationManager: NSObject, ObservableObject {
     @Published private(set) var lastStatusMessage: String?
     @Published private(set) var lastHandledActionSummary: String?
 
-    var onActionReceived: (@MainActor (BrokNotificationAction, String) -> Void)?
-    var onOpenWorkspaceRequested: (@MainActor () -> Void)?
+    var onActionReceived: (@MainActor (BrokNotificationAction, String, [String: String]) -> Void)?
+    var onOpenWorkspaceRequested: (@MainActor (UUID?) -> Void)?
 
     override init() {
         self.isBundledApp = Bundle.main.bundleURL.pathExtension == "app"
@@ -43,8 +43,13 @@ final class LocalNotificationManager: NSObject, ObservableObject {
             return
         }
 
+        let rawStatus = await fetchAuthorizationStatusRaw()
+        authorizationStatus = UNAuthorizationStatus(rawValue: rawStatus) ?? .notDetermined
+    }
+
+    nonisolated private func fetchAuthorizationStatusRaw() async -> Int {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
-        authorizationStatus = settings.authorizationStatus
+        return settings.authorizationStatus.rawValue
     }
 
     /// Requests user authorization for banners, sounds, and badges when running inside `BrokBot.app`.
@@ -78,10 +83,11 @@ final class LocalNotificationManager: NSObject, ObservableObject {
         }
 
         let center = UNUserNotificationCenter.current()
-        let settings = await center.notificationSettings()
-        authorizationStatus = settings.authorizationStatus
+        let rawStatus = await fetchAuthorizationStatusRaw()
+        let status = UNAuthorizationStatus(rawValue: rawStatus) ?? .notDetermined
+        authorizationStatus = status
 
-        switch settings.authorizationStatus {
+        switch status {
         case .notDetermined:
             let granted = await requestAuthorization()
             guard granted else { return false }
@@ -99,7 +105,9 @@ final class LocalNotificationManager: NSObject, ObservableObject {
         if let subtitle = payload.subtitle, !subtitle.isEmpty {
             content.subtitle = subtitle
         }
-        content.body = payload.body
+        content.body = payload.isPrivate
+            ? (payload.lockScreenPlaceholder ?? "Action needs review in Brok Bot.")
+            : payload.body
         content.categoryIdentifier = payload.category.rawValue
         content.userInfo = payload.userInfo
         content.sound = .default
@@ -130,13 +138,22 @@ final class LocalNotificationManager: NSObject, ObservableObject {
         }
     }
 
-    /// Schedules a test interactive notification showcasing `approvalRequest` (`[Approve]` / `[Deny]`).
+    /// Dismisses any pending or delivered OS notification matching `requestID`.
+    func dismissNotification(requestID: UUID) {
+        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
+        let identifier = requestID.uuidString
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
+
+    /// Schedules a test interactive notification showcasing `approvalRequest` (`[Allow once]` / `[Deny]`).
     @discardableResult
     func sendTestNotification() async -> Bool {
         let payload = LocalNotificationPayload(
             title: "Brok Bot · Approval Check",
             subtitle: "Dual-Space & Local Daemon Ready",
-            body: "Test notification active. Choose Approve or Deny to test interactive actions.",
+            body: "Test notification active. Choose Allow once or Deny to test interactive actions.",
             category: .approvalRequest,
             userInfo: ["source": "test_notification"],
             delaySeconds: 1.0
@@ -167,7 +184,13 @@ final class LocalNotificationManager: NSObject, ObservableObject {
     private func registerCategories(on center: UNUserNotificationCenter) {
         let categories = Set(BrokNotificationCategory.allCases.map { category -> UNNotificationCategory in
             let actions = category.actions.map { action -> UNNotificationAction in
-                let options: UNNotificationActionOptions = action.isDestructive ? [.destructive] : []
+                var options: UNNotificationActionOptions = []
+                if action.isDestructive {
+                    options.insert(.destructive)
+                }
+                if action.opensAppInForeground {
+                    options.insert(.foreground)
+                }
                 return UNNotificationAction(
                     identifier: action.rawValue,
                     title: action.title,
@@ -178,19 +201,31 @@ final class LocalNotificationManager: NSObject, ObservableObject {
                 identifier: category.rawValue,
                 actions: actions,
                 intentIdentifiers: [],
+                hiddenPreviewsBodyPlaceholder: "Needs your attention in Brok Bot.",
                 options: [.customDismissAction]
             )
         })
         center.setNotificationCategories(categories)
     }
 
-    private func handleNotificationResponse(actionIdentifier: String, title: String) {
+    private func handleNotificationResponse(
+        actionIdentifier: String,
+        title: String,
+        userInfo: [String: String]
+    ) {
+        let rawRequestID = userInfo["request_id"] ?? userInfo["elicitation_id"]
+        let parsedRequestID = rawRequestID.flatMap(UUID.init(uuidString:))
+
         if let action = BrokNotificationAction(rawValue: actionIdentifier) {
             lastHandledActionSummary = "\(action.title) selected for '\(title)'"
             lastStatusMessage = lastHandledActionSummary
-            onActionReceived?(action, title)
+            if action.opensAppInForeground {
+                onOpenWorkspaceRequested?(parsedRequestID)
+            } else {
+                onActionReceived?(action, title, userInfo)
+            }
         } else if actionIdentifier == UNNotificationDefaultActionIdentifier {
-            onOpenWorkspaceRequested?()
+            onOpenWorkspaceRequested?(parsedRequestID)
         }
     }
 }
@@ -209,8 +244,18 @@ extension LocalNotificationManager: UNUserNotificationCenterDelegate {
     ) async {
         let actionIdentifier = response.actionIdentifier
         let title = response.notification.request.content.title
+        var stringInfo: [String: String] = [:]
+        for (key, value) in response.notification.request.content.userInfo {
+            if let k = key as? String, let v = value as? String {
+                stringInfo[k] = v
+            }
+        }
         await MainActor.run {
-            self.handleNotificationResponse(actionIdentifier: actionIdentifier, title: title)
+            self.handleNotificationResponse(
+                actionIdentifier: actionIdentifier,
+                title: title,
+                userInfo: stringInfo
+            )
         }
     }
 }

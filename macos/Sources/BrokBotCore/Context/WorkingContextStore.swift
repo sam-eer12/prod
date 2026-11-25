@@ -30,7 +30,8 @@ public actor WorkingContextStore {
         content: String,
         isStreaming: Bool = false,
         promptTokens: Int? = nil,
-        completionTokens: Int? = nil
+        completionTokens: Int? = nil,
+        attachments: [ChatAttachment]? = nil
     ) -> Bool {
         guard let index = storedMessages.firstIndex(where: { $0.id == id }) else {
             return false
@@ -44,7 +45,8 @@ public actor WorkingContextStore {
             memoryNotice: existing.memoryNotice,
             isStreaming: isStreaming,
             promptTokens: promptTokens,
-            completionTokens: completionTokens
+            completionTokens: completionTokens,
+            attachments: attachments ?? existing.attachments
         )
         trimToBudget()
         return true

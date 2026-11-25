@@ -1,0 +1,43 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "neon-mcp",
+  "name": "Neon (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Neon hosted Streamable HTTP MCP server for inspecting Serverless Postgres projects, branches, and read-only SQL queries via OAuth 2.1 + PKCE or a vaulted API Key.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.neon.tech/mcp"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": [
+      {
+        "key": "bearer_token",
+        "label": "Neon API Key (Optional if using OAuth Sign-In)",
+        "secret": true,
+        "required": false,
+        "placeholder": "napi_..."
+      }
+    ]
+  },
+  "permissions": [
+    "neon.projects.read",
+    "neon.branches.read",
+    "neon.sql.read"
+  ],
+  "tools": [
+    {
+      "name": "list_projects",
+      "description": "List Neon Postgres projects, branches, and schema metadata.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

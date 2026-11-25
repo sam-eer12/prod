@@ -1,0 +1,43 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "stripe-mcp",
+  "name": "Stripe (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Stripe hosted Streamable HTTP MCP server for inspecting customers, invoices, subscriptions, and payment objects via OAuth 2.1 + PKCE or a vaulted Restricted API Key.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.stripe.com"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": [
+      {
+        "key": "bearer_token",
+        "label": "Restricted API Key (Optional if using OAuth Sign-In)",
+        "secret": true,
+        "required": false,
+        "placeholder": "rk_live_..."
+      }
+    ]
+  },
+  "permissions": [
+    "stripe.customers.read",
+    "stripe.invoices.read",
+    "stripe.subscriptions.read"
+  ],
+  "tools": [
+    {
+      "name": "list_customers",
+      "description": "Inspect Stripe customers, invoices, and subscription statuses.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

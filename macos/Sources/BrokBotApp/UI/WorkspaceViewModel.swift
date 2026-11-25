@@ -1,8 +1,9 @@
+import AppKit
 import BrokBotCore
 import Foundation
 import SwiftUI
 
-/// Observable coordinator bridging the SwiftUI workspace to BrokBotCore actors, Vault, Persistence, and BYOK SSE streaming.
+/// Observable coordinator bridging the SwiftUI workspace to BrokBotCore actors, Vault, MCP, Persistence, and BYOK SSE streaming.
 @MainActor
 final class WorkspaceViewModel: ObservableObject {
     @Published var personas: [BotPersona] = BotPersona.presets
@@ -15,11 +16,25 @@ final class WorkspaceViewModel: ObservableObject {
     @Published var workingSummary: String?
     @Published var memoryEntries: [MemoryEntry] = []
     @Published var isShowingSettings: Bool = false
+    @Published var isShowingMCPServers: Bool = false
 
     @Published var computeConfig: ComputeConfiguration
     @Published var effectiveThreadCount: Int
     @Published var byokConfig: BYOKConfiguration = BYOKConfiguration()
     @Published var statusBanner: String?
+
+    @Published var mcpConnections: [MCPServerConnection] = []
+    @Published var pendingElicitations: [MCPElicitationRequest] = []
+    @Published var mcpStatusMessage: String?
+    @Published var marketplaceEntries: [MarketplaceCatalogEntry] = []
+    @Published var marketplaceCatalogURL: String = ""
+    @Published var allowUnsignedTemplates: Bool = true
+    @Published private(set) var isLoadingMarketplace: Bool = false
+    @Published private(set) var configuredMCPConnectionIDs: Set<String> = []
+    @Published private(set) var dailyRequestCounts: [String: Int] = [:]
+    @Published private(set) var authenticatingConnectionID: String?
+    @Published private(set) var discoveringConnectionID: String?
+    @Published private(set) var activeToolCallStatus: String?
 
     @Published private(set) var isVaultUnlocked: Bool = false
     @Published private(set) var isUnlockingVault: Bool = false
@@ -29,18 +44,50 @@ final class WorkspaceViewModel: ObservableObject {
     @Published private(set) var lastInjectedMemoryCount: Int = 0
     @Published private(set) var lastPromptTokenEstimate: Int = 0
 
+    @Published var firebaseUser: FirebaseAuthUser?
+    @Published private(set) var isAuthenticatingAccount: Bool = false
+    @Published var authStatusMessage: String?
+
+    @Published var desktopBrowserConfig: DesktopBrowserConfig = DesktopBrowserConfig()
+    @Published private(set) var lastOpenedBrowserURL: String?
+    @Published private(set) var activeBrowserTab: BrowserActiveTab?
+    @Published var browserStatusMessage: String?
+
     let workingContextStore: WorkingContextStore
     let vaultManager: BrokVaultManager
     let permanentMemoryManager: PermanentContextEnclaveManager
     let persistenceStore: WorkspacePersistenceStore
     let computeEngine: BrokComputeEngine
     let byokClient: BYOKModelClient
+    let mcpManager: MCPConnectionManager
+    let marketplaceRegistry: MarketplaceRegistry
+    let firebaseConfig: FirebaseAppConfig?
+    let firebaseAuthClient: FirebaseAuthClient
+    let browserBridge: DesktopBrowserBridge
+    let attentionCoordinator = PendingAttentionCoordinator()
+    private let macAuthCoordinator = MacAuthCoordinator()
+
+    var onNotifyAttention: ((LocalNotificationPayload) -> Void)?
+    var onDismissNotification: ((UUID) -> Void)?
 
     private var streamingTask: Task<Void, Never>?
     private var debouncedSaveTask: Task<Void, Never>?
+    private var activeLoopbackServer: LoopbackOAuthServer?
 
     var workingTokenBudget: Int {
         workingContextStore.maxTokenBudget
+    }
+
+    var activeMCPServerCount: Int {
+        mcpConnections.filter(\.isEnabled).count
+    }
+
+    var activeMCPToolCount: Int {
+        mcpManager.buildActiveToolDefinitions(from: mcpConnections).definitions.count
+    }
+
+    var activeBrowserToolCount: Int {
+        desktopBrowserConfig.isEnabled ? DesktopBrowserBridge.toolDefinitions.count : 0
     }
 
     var activeThread: ConversationThread? {
@@ -56,7 +103,12 @@ final class WorkspaceViewModel: ObservableObject {
         ),
         persistenceStore: WorkspacePersistenceStore = WorkspacePersistenceStore(),
         computeEngine: BrokComputeEngine = .shared,
-        byokClient: BYOKModelClient = BYOKModelClient()
+        byokClient: BYOKModelClient = BYOKModelClient(),
+        mcpManager: MCPConnectionManager? = nil,
+        marketplaceRegistry: MarketplaceRegistry = MarketplaceRegistry(),
+        firebaseConfig: FirebaseAppConfig? = BrokAppResources.loadFirebaseAppConfig(),
+        firebaseAuthClient: FirebaseAuthClient = FirebaseAuthClient(),
+        browserBridge: DesktopBrowserBridge = DesktopBrowserBridge()
     ) {
         self.workingContextStore = workingContextStore
         self.vaultManager = vaultManager
@@ -64,6 +116,11 @@ final class WorkspaceViewModel: ObservableObject {
         self.persistenceStore = persistenceStore
         self.computeEngine = computeEngine
         self.byokClient = byokClient
+        self.mcpManager = mcpManager ?? MCPConnectionManager(vault: vaultManager)
+        self.marketplaceRegistry = marketplaceRegistry
+        self.firebaseConfig = firebaseConfig
+        self.firebaseAuthClient = firebaseAuthClient
+        self.browserBridge = browserBridge
         self.computeConfig = computeEngine.configuration
         self.effectiveThreadCount = computeEngine.maxConcurrentOperationCount
 
@@ -85,6 +142,26 @@ final class WorkspaceViewModel: ObservableObject {
                 effectiveThreadCount = computeEngine.maxConcurrentOperationCount
 
                 byokConfig = snapshot.byokConfig
+                mcpConnections = snapshot.mcpConnections
+                marketplaceCatalogURL = snapshot.marketplaceCatalogURL ?? ""
+                firebaseUser = snapshot.firebaseUser
+                desktopBrowserConfig = snapshot.desktopBrowserConfig
+
+                let expiredRecords = await attentionCoordinator.expirePersistedOnRelaunch(snapshot.pendingAttentionRecords)
+                if !expiredRecords.isEmpty {
+                    for expired in expiredRecords {
+                        if let threadID = expired.threadID,
+                           let idx = threads.firstIndex(where: { $0.id == threadID }) {
+                            threads[idx].messages.append(
+                                ChatMessage(
+                                    role: .system,
+                                    content: "Pending request '\(expired.actionSummary)' expired after app relaunch."
+                                )
+                            )
+                        }
+                    }
+                    await hydrateWorkingContext(from: activeThread?.messages ?? [])
+                }
 
                 if snapshot.threads.isEmpty {
                     let initial = ConversationThread(
@@ -128,6 +205,7 @@ final class WorkspaceViewModel: ObservableObject {
         }
 
         await refreshState()
+        await refreshMarketplaceCatalog(remoteURLString: nil)
     }
 
     private func hydrateWorkingContext(from savedMessages: [ChatMessage]) async {
@@ -152,8 +230,10 @@ final class WorkspaceViewModel: ObservableObject {
         let presetIDs = Set(BotPersona.presets.map(\.id))
 
         var merged = BotPersona.presets.map { preset -> BotPersona in
-            if let override = customByID[preset.id], !preset.isDefault {
-                return override
+            if let override = customByID[preset.id] {
+                var preserved = override
+                preserved.isDefault = preset.isDefault
+                return preserved
             }
             return preset
         }
@@ -164,7 +244,7 @@ final class WorkspaceViewModel: ObservableObject {
         return merged
     }
 
-    private func buildSnapshot() -> WorkspaceSnapshot {
+    private func buildSnapshot() async -> WorkspaceSnapshot {
         let presetByID = Dictionary(uniqueKeysWithValues: BotPersona.presets.map { ($0.id, $0) })
         let customToPersist = personas.filter { persona in
             guard let preset = presetByID[persona.id] else {
@@ -173,13 +253,20 @@ final class WorkspaceViewModel: ObservableObject {
             return persona != preset
         }
 
+        let trimmedCatalogURL = marketplaceCatalogURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pendingRecords = await attentionCoordinator.pendingRecords()
         return WorkspaceSnapshot(
             threads: threads,
             customPersonas: customToPersist,
             activeThreadID: activeThreadID,
             selectedPersonaID: selectedPersona.id,
             computeConfig: computeConfig,
-            byokConfig: byokConfig
+            byokConfig: byokConfig,
+            marketplaceCatalogURL: trimmedCatalogURL.isEmpty ? nil : trimmedCatalogURL,
+            mcpConnections: mcpConnections,
+            firebaseUser: firebaseUser,
+            desktopBrowserConfig: desktopBrowserConfig,
+            pendingAttentionRecords: pendingRecords
         )
     }
 
@@ -187,7 +274,8 @@ final class WorkspaceViewModel: ObservableObject {
         debouncedSaveTask?.cancel()
         debouncedSaveTask = nil
         do {
-            try await persistenceStore.save(buildSnapshot())
+            let snapshot = await buildSnapshot()
+            try await persistenceStore.save(snapshot)
         } catch {
             statusBanner = "Workspace save error: \(error.localizedDescription)"
         }
@@ -227,6 +315,26 @@ final class WorkspaceViewModel: ObservableObject {
             configuredProviders = []
             memoryEntries = []
         }
+
+        await refreshMCPCredentialStatus()
+    }
+
+    func refreshMCPCredentialStatus() async {
+        var configuredIDs: Set<String> = []
+        for connection in mcpConnections {
+            if await mcpManager.hasStoredCredential(for: connection) {
+                configuredIDs.insert(connection.id)
+            }
+        }
+        configuredMCPConnectionIDs = configuredIDs
+        dailyRequestCounts = await mcpManager.dailyRequestCountsSnapshot()
+    }
+
+    func hasCredential(for connection: MCPServerConnection) -> Bool {
+        if connection.authMode == .none {
+            return true
+        }
+        return configuredMCPConnectionIDs.contains(connection.id)
     }
 
     // MARK: - Vault & BYOK Key Management
@@ -307,6 +415,138 @@ final class WorkspaceViewModel: ObservableObject {
         configuredProviders.contains(provider)
     }
 
+    // MARK: - Firebase Auth (Google & Apple Sign-In)
+
+    func signInWithGoogle() async {
+        guard !isAuthenticatingAccount else { return }
+        guard let config = firebaseConfig else {
+            authStatusMessage = FirebaseAuthError.missingConfiguration.localizedDescription
+            return
+        }
+
+        isAuthenticatingAccount = true
+        authStatusMessage = "Opening Google Sign-In…"
+        defer { isAuthenticatingAccount = false }
+
+        do {
+            let pkce = try PKCEChallenge.generate()
+            let code = try await macAuthCoordinator.authorizeGoogle(
+                config: config,
+                pkce: pkce,
+                authClient: firebaseAuthClient
+            )
+            let tokens = try await firebaseAuthClient.exchangeGoogleCodeForTokens(
+                config: config,
+                code: code,
+                codeVerifier: pkce.codeVerifier
+            )
+            let session = try await firebaseAuthClient.signInWithGoogleIDToken(
+                config: config,
+                idToken: tokens.idToken,
+                accessToken: tokens.accessToken
+            )
+            await applyFirebaseSession(session)
+        } catch {
+            authStatusMessage = error.localizedDescription
+        }
+    }
+
+    func signInWithApple() async {
+        guard !isAuthenticatingAccount else { return }
+        guard let config = firebaseConfig else {
+            authStatusMessage = FirebaseAuthError.missingConfiguration.localizedDescription
+            return
+        }
+
+        isAuthenticatingAccount = true
+        authStatusMessage = "Starting Sign in with Apple…"
+        defer { isAuthenticatingAccount = false }
+
+        do {
+            let nonce = try AppleSignInNonce.generate()
+            let appleResult = try await macAuthCoordinator.authorizeApple(nonce: nonce)
+            let session = try await firebaseAuthClient.signInWithAppleIDToken(
+                config: config,
+                idToken: appleResult.idToken,
+                rawNonce: nonce.rawNonce,
+                displayName: appleResult.fullName
+            )
+            await applyFirebaseSession(session)
+        } catch {
+            authStatusMessage = error.localizedDescription
+        }
+    }
+
+    func signOutFirebase() async {
+        firebaseUser = nil
+        if await vaultManager.isUnlocked() {
+            try? await vaultManager.deleteConnectorSecrets(for: FirebaseAuthVaultKeys.connectorID)
+        }
+        await saveWorkspaceNow()
+        authStatusMessage = "Signed out of Brok Bot."
+    }
+
+    private func applyFirebaseSession(_ session: FirebaseAuthSession) async {
+        firebaseUser = session.user
+        if await vaultManager.isUnlocked() {
+            try? await vaultManager.setConnectorSecrets([
+                FirebaseAuthVaultKeys.idToken: session.idToken,
+                FirebaseAuthVaultKeys.refreshToken: session.refreshToken,
+                FirebaseAuthVaultKeys.expiresAt: String(session.expiresAt.timeIntervalSince1970)
+            ], for: FirebaseAuthVaultKeys.connectorID)
+        }
+        await saveWorkspaceNow()
+        let label = session.user.displayName ?? session.user.email ?? session.user.uid
+        authStatusMessage = "Signed in as \(label) via \(session.user.providerLabel)."
+    }
+
+    // MARK: - Desktop Browser Integration
+
+    func updateDesktopBrowserConfig(_ updated: DesktopBrowserConfig) {
+        desktopBrowserConfig = updated
+        scheduleWorkspaceSave()
+    }
+
+    func inspectActiveDesktopBrowserTab() async {
+        do {
+            let tab = try await browserBridge.getActiveTab(target: desktopBrowserConfig.preferredBrowser)
+            activeBrowserTab = tab
+            browserStatusMessage = "Active tab (\(tab.browserName)): \(tab.title)"
+        } catch {
+            browserStatusMessage = error.localizedDescription
+        }
+    }
+
+    func grabActiveBrowserTabIntoDraft() async {
+        do {
+            let tab = try await browserBridge.getActiveTab(target: desktopBrowserConfig.preferredBrowser)
+            activeBrowserTab = tab
+            browserStatusMessage = "Captured tab from \(tab.browserName)."
+            let contextSnippet = "Context from \(tab.browserName) tab \"\(tab.title)\" (\(tab.url)):\n"
+            if draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draftInput = contextSnippet
+            } else {
+                draftInput = "\(draftInput)\n\n\(contextSnippet)"
+            }
+        } catch {
+            browserStatusMessage = error.localizedDescription
+            statusBanner = error.localizedDescription
+        }
+    }
+
+    func openURLInDesktopBrowser(_ urlString: String) async {
+        do {
+            let opened = try await browserBridge.openURL(
+                urlString: urlString,
+                target: desktopBrowserConfig.preferredBrowser
+            )
+            lastOpenedBrowserURL = opened
+            browserStatusMessage = "Opened \(opened) in \(desktopBrowserConfig.preferredBrowser.displayName)."
+        } catch {
+            browserStatusMessage = error.localizedDescription
+        }
+    }
+
     // MARK: - Persona Management
 
     func selectPersona(_ persona: BotPersona) {
@@ -319,8 +559,16 @@ final class WorkspaceViewModel: ObservableObject {
 
     func addPersona(_ persona: BotPersona) {
         personas.append(persona)
-        selectPersona(persona)
+        selectedPersona = persona
+        let initialThread = ConversationThread(
+            personaID: persona.id,
+            title: "\(persona.name) Chat"
+        )
+        threads.insert(initialThread, at: 0)
+        activeThreadID = initialThread.id
         Task {
+            await workingContextStore.reset()
+            await refreshState()
             await saveWorkspaceNow()
         }
     }
@@ -451,6 +699,11 @@ final class WorkspaceViewModel: ObservableObject {
 
     func cancelStreaming() {
         streamingTask?.cancel()
+        activeToolCallStatus = nil
+        pendingElicitations.removeAll()
+        Task {
+            await mcpManager.cancelAllPendingElicitations()
+        }
     }
 
     func submitMessage(_ text: String) async {
@@ -598,50 +851,190 @@ final class WorkspaceViewModel: ObservableObject {
         await syncActiveThreadMessagesFromWorkingContext()
         await refreshState()
 
-        let request = BYOKChatRequest(
-            configuration: byokConfig,
-            apiKey: apiKey,
-            systemPrompt: assembled.systemPrompt,
-            messages: requestMessages
-        )
-
+        let (mcpTools, toolRoutes) = mcpManager.buildActiveToolDefinitions(from: mcpConnections)
+        let activeBrowserConfig = desktopBrowserConfig
+        var activeTools = mcpTools
+        if activeBrowserConfig.isEnabled {
+            activeTools.append(contentsOf: DesktopBrowserBridge.toolDefinitions)
+        }
+        let activeConfig = byokConfig
+        let activeConnections = mcpConnections
+        let assembledSystemPrompt = assembled.systemPrompt
         let assistantID = assistantPlaceholder.id
         let streamLiveUpdates = byokConfig.streamingEnabled
         isStreaming = true
 
         let task = Task { [weak self] in
             guard let self else { return }
-            var accumulatedContent = ""
-            var latestPromptTokens: Int?
-            var latestCompletionTokens: Int?
+            var conversationHistory = requestMessages
+            var accumulatedDisplay = ""
+            var collectedAttachments: [ChatAttachment] = []
+            var totalPromptTokens = 0
+            var totalCompletionTokens = 0
+            var observedUsage = false
             var streamError: Error?
 
             do {
-                for try await event in self.byokClient.streamChat(request) {
+                for round in 0..<6 {
                     try Task.checkCancellation()
 
-                    switch event {
-                    case .textDelta(let delta):
-                        accumulatedContent.append(delta)
-                        if streamLiveUpdates {
-                            self.updatePublishedStreamingMessage(id: assistantID, content: accumulatedContent)
+                    let roundRequest = BYOKChatRequest(
+                        configuration: activeConfig,
+                        apiKey: apiKey,
+                        systemPrompt: assembledSystemPrompt,
+                        messages: conversationHistory,
+                        tools: activeTools
+                    )
+
+                    var roundText = ""
+                    var roundToolCalls: [ToolCallRecord] = []
+
+                    for try await event in self.byokClient.streamChat(roundRequest) {
+                        try Task.checkCancellation()
+
+                        switch event {
+                        case .textDelta(let delta):
+                            roundText.append(delta)
+                            let preview = self.composeStreamingDisplay(
+                                previousDisplay: accumulatedDisplay,
+                                currentRoundText: roundText,
+                                roundIndex: round
+                            )
+                            if streamLiveUpdates {
+                                self.updatePublishedStreamingMessage(id: assistantID, content: preview)
+                            }
+                        case .toolCall(let record):
+                            roundToolCalls.append(record)
+                        case .usage(let usage):
+                            observedUsage = true
+                            totalPromptTokens += usage.promptTokens
+                            totalCompletionTokens += usage.completionTokens
+                        case .finished:
+                            break
                         }
-                    case .toolCall(let record):
-                        let toolNote = "\n\n`[Tool call: \(record.name)]`"
-                        accumulatedContent.append(toolNote)
-                        if streamLiveUpdates {
-                            self.updatePublishedStreamingMessage(id: assistantID, content: accumulatedContent)
-                        }
-                    case .usage(let usage):
-                        latestPromptTokens = usage.promptTokens
-                        latestCompletionTokens = usage.completionTokens
-                    case .finished:
+                    }
+
+                    accumulatedDisplay = self.composeStreamingDisplay(
+                        previousDisplay: accumulatedDisplay,
+                        currentRoundText: roundText,
+                        roundIndex: round
+                    )
+
+                    if roundToolCalls.isEmpty {
                         break
                     }
+
+                    conversationHistory.append(
+                        BYOKChatMessage(
+                            role: .assistant,
+                            content: roundText,
+                            toolCalls: roundToolCalls
+                        )
+                    )
+
+                    for toolCall in roundToolCalls {
+                        try Task.checkCancellation()
+
+                        if toolCall.name.hasPrefix(DesktopBrowserBridge.toolPrefix) {
+                            self.activeToolCallStatus = "Running \(toolCall.name)…"
+                            let toolNotice = "\n\n`[Browser: \(toolCall.name)]`"
+                            accumulatedDisplay.append(toolNotice)
+                            if streamLiveUpdates {
+                                self.updatePublishedStreamingMessage(id: assistantID, content: accumulatedDisplay)
+                            }
+
+                            var approved = true
+                            if toolCall.name == "browser_open_url" && activeBrowserConfig.requireApprovalToOpenLinks {
+                                let args = JSONValue.decodeObject(from: toolCall.argumentsJSON)
+                                let targetURL = args["url"]?.stringValue ?? ""
+                                let approvalReq = MCPElicitationRequest(
+                                    connectionID: "desktop-browser",
+                                    serverName: "Desktop Browser (\(activeBrowserConfig.preferredBrowser.displayName))",
+                                    toolName: toolCall.name,
+                                    mode: .clientApproval,
+                                    message: "Open '\(targetURL)' in \(activeBrowserConfig.preferredBrowser.displayName)?",
+                                    argumentsPreview: toolCall.argumentsJSON,
+                                    isReadOperation: false
+                                )
+                                let decision = await self.mcpManager.requestClientApproval(
+                                    approvalReq,
+                                    onElicitationRequested: { [weak self] elicitation in
+                                        Task { @MainActor [weak self] in
+                                            self?.enqueueElicitation(elicitation)
+                                        }
+                                    }
+                                )
+                                approved = (decision.action == .accept)
+                            }
+
+                            let toolOutput: String
+                            if approved {
+                                let browserResult = await self.browserBridge.executeToolCall(
+                                    record: toolCall,
+                                    config: activeBrowserConfig
+                                )
+                                toolOutput = browserResult.outputText
+                                if let openedURL = browserResult.openedURL {
+                                    self.lastOpenedBrowserURL = openedURL
+                                    self.browserStatusMessage = "Opened \(openedURL)"
+                                }
+                                if let activeTab = browserResult.activeTab {
+                                    self.activeBrowserTab = activeTab
+                                    self.browserStatusMessage = "Read tab from \(activeTab.browserName)"
+                                }
+                            } else {
+                                toolOutput = "User declined opening URL in desktop browser."
+                            }
+
+                            conversationHistory.append(
+                                BYOKChatMessage(
+                                    role: .tool,
+                                    content: toolOutput,
+                                    toolCallID: toolCall.id
+                                )
+                            )
+                            continue
+                        }
+
+                        let displayToolName = toolRoutes[toolCall.name]?.tool.name ?? toolCall.name
+                        self.activeToolCallStatus = "Running \(displayToolName)…"
+
+                        let toolNotice = "\n\n`[MCP: \(displayToolName)]`"
+                        accumulatedDisplay.append(toolNotice)
+                        if streamLiveUpdates {
+                            self.updatePublishedStreamingMessage(id: assistantID, content: accumulatedDisplay)
+                        }
+
+                        let executionResult = await self.mcpManager.executeToolCall(
+                            record: toolCall,
+                            routes: toolRoutes,
+                            connections: activeConnections,
+                            onElicitationRequested: { [weak self] elicitation in
+                                Task { @MainActor [weak self] in
+                                    self?.enqueueElicitation(elicitation)
+                                }
+                            }
+                        )
+
+                        if !executionResult.attachments.isEmpty {
+                            collectedAttachments.append(contentsOf: executionResult.attachments)
+                        }
+
+                        conversationHistory.append(
+                            BYOKChatMessage(
+                                role: .tool,
+                                content: executionResult.outputText,
+                                toolCallID: toolCall.id
+                            )
+                        )
+                    }
+
+                    self.activeToolCallStatus = nil
+                    self.dailyRequestCounts = await self.mcpManager.dailyRequestCountsSnapshot()
                 }
             } catch is CancellationError {
-                if accumulatedContent.isEmpty {
-                    accumulatedContent = "_Generation stopped._"
+                if accumulatedDisplay.isEmpty {
+                    accumulatedDisplay = "_Generation stopped._"
                 }
             } catch {
                 streamError = error
@@ -649,26 +1042,28 @@ final class WorkspaceViewModel: ObservableObject {
 
             let finalContent: String
             if let streamError {
-                if accumulatedContent.isEmpty {
+                if accumulatedDisplay.isEmpty {
                     finalContent = "BYOK request failed (\(self.byokConfig.provider.displayName) · \(self.byokConfig.modelID)): \(streamError.localizedDescription)"
                 } else {
-                    finalContent = "\(accumulatedContent)\n\n_Stream interrupted: \(streamError.localizedDescription)_"
+                    finalContent = "\(accumulatedDisplay)\n\n_Stream interrupted: \(streamError.localizedDescription)_"
                 }
                 self.statusBanner = streamError.localizedDescription
-            } else if accumulatedContent.isEmpty {
+            } else if accumulatedDisplay.isEmpty {
                 finalContent = "_No text returned by \(self.byokConfig.provider.displayName)._"
             } else {
-                finalContent = accumulatedContent
+                finalContent = accumulatedDisplay
             }
 
             await self.workingContextStore.replaceMessage(
                 id: assistantID,
                 content: finalContent,
                 isStreaming: false,
-                promptTokens: latestPromptTokens,
-                completionTokens: latestCompletionTokens
+                promptTokens: observedUsage ? totalPromptTokens : nil,
+                completionTokens: observedUsage ? totalCompletionTokens : nil,
+                attachments: collectedAttachments
             )
             await self.syncActiveThreadMessagesFromWorkingContext()
+            self.activeToolCallStatus = nil
             self.isStreaming = false
             self.streamingTask = nil
             await self.refreshState()
@@ -677,6 +1072,20 @@ final class WorkspaceViewModel: ObservableObject {
 
         streamingTask = task
         await task.value
+    }
+
+    private func composeStreamingDisplay(
+        previousDisplay: String,
+        currentRoundText: String,
+        roundIndex: Int
+    ) -> String {
+        guard roundIndex > 0, !previousDisplay.isEmpty else {
+            return currentRoundText
+        }
+        if currentRoundText.isEmpty {
+            return previousDisplay
+        }
+        return "\(previousDisplay)\n\n\(currentRoundText)"
     }
 
     private func appendMissingAPIKeyGuidance() async {
@@ -889,5 +1298,483 @@ final class WorkspaceViewModel: ObservableObject {
                 statusBanner = "Delete failed: \(error.localizedDescription)"
             }
         }
+    }
+
+    // MARK: - MCP Server Connections, OAuth 2.1 PKCE & Elicitation
+
+    func saveMCPConnection(
+        _ connection: MCPServerConnection,
+        bearerToken: String?,
+        clientSecret: String?
+    ) async {
+        let cleanBearer = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let cleanSecret = clientSecret?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if !cleanBearer.isEmpty || !cleanSecret.isEmpty {
+            if !(await vaultManager.isUnlocked()) {
+                let unlocked = await unlockVault(reason: "Unlock Brok Bot Vault to store MCP credentials")
+                guard unlocked else {
+                    mcpStatusMessage = vaultErrorMessage ?? "Vault is locked; credentials were not saved."
+                    return
+                }
+            }
+        }
+
+        do {
+            if !cleanBearer.isEmpty {
+                try await mcpManager.saveBearerToken(cleanBearer, for: connection.id)
+            }
+            if !cleanSecret.isEmpty {
+                try await mcpManager.saveClientSecret(cleanSecret, for: connection.id)
+            }
+        } catch {
+            mcpStatusMessage = "Failed to store MCP secret: \(error.localizedDescription)"
+            return
+        }
+
+        upsertMCPConnection(connection)
+        await refreshMCPCredentialStatus()
+        await saveWorkspaceNow()
+        mcpStatusMessage = "Saved '\(connection.name)'."
+
+        if connection.authMode == .none || !cleanBearer.isEmpty {
+            await connectAndDiscoverTools(for: connection)
+        }
+    }
+
+    func toggleMCPConnection(_ connection: MCPServerConnection, enabled: Bool) {
+        var updated = connection
+        updated.isEnabled = enabled
+        upsertMCPConnection(updated)
+        scheduleWorkspaceSave()
+    }
+
+    func deleteMCPConnection(_ connection: MCPServerConnection) async {
+        mcpConnections.removeAll { $0.id == connection.id }
+        try? await mcpManager.deleteSecrets(for: connection.id)
+        await refreshMCPCredentialStatus()
+        await saveWorkspaceNow()
+        mcpStatusMessage = "Removed '\(connection.name)'."
+    }
+
+    func connectAndDiscoverTools(for connection: MCPServerConnection) async {
+        discoveringConnectionID = connection.id
+        defer { discoveringConnectionID = nil }
+
+        let vaultCurrentlyUnlocked = await vaultManager.isUnlocked()
+        if connection.authMode != .none && !vaultCurrentlyUnlocked {
+            let unlocked = await unlockVault(reason: "Unlock Brok Bot Vault to read MCP credentials")
+            guard unlocked else {
+                mcpStatusMessage = "Vault locked. Unlock to connect '\(connection.name)'."
+                return
+            }
+        }
+
+        do {
+            let (updated, handshake) = try await mcpManager.connectAndDiscoverTools(for: connection)
+            upsertMCPConnection(updated)
+            await refreshMCPCredentialStatus()
+            await saveWorkspaceNow()
+            let serverLabel = handshake.serverName ?? updated.name
+            mcpStatusMessage = "Connected to \(serverLabel): discovered \(updated.discoveredTools.count) tool(s)."
+        } catch {
+            mcpStatusMessage = "Sync failed for '\(connection.name)': \(error.localizedDescription)"
+        }
+    }
+
+    func startOAuthSignIn(for connection: MCPServerConnection) async {
+        guard authenticatingConnectionID == nil else { return }
+        authenticatingConnectionID = connection.id
+        defer { authenticatingConnectionID = nil }
+
+        if !(await vaultManager.isUnlocked()) {
+            let unlocked = await unlockVault(reason: "Unlock Brok Bot Vault to store OAuth tokens")
+            guard unlocked else {
+                mcpStatusMessage = "Vault locked. Unlock before signing in."
+                return
+            }
+        }
+
+        guard let endpointURL = URL(string: connection.endpointURL) else {
+            mcpStatusMessage = "Invalid MCP server endpoint URL."
+            return
+        }
+
+        do {
+            let authEndpoint: URL
+            let tokenEndpoint: URL
+            var registrationEndpoint: URL?
+            var resourceURL: URL?
+            var resolvedScopes = connection.scopes
+
+            if let explicitAuth = connection.authorizationEndpoint,
+               let explicitToken = connection.tokenEndpoint,
+               let aURL = URL(string: explicitAuth),
+               let tURL = URL(string: explicitToken) {
+                authEndpoint = aURL
+                tokenEndpoint = tURL
+            } else {
+                let discovered = try await mcpManager.oauthClient.discoverMetadata(for: endpointURL)
+                authEndpoint = discovered.authorizationEndpoint
+                tokenEndpoint = discovered.tokenEndpoint
+                registrationEndpoint = discovered.registrationEndpoint
+                resourceURL = discovered.resourceURL
+                if resolvedScopes.isEmpty && !discovered.supportedScopes.isEmpty {
+                    resolvedScopes = discovered.supportedScopes
+                }
+            }
+
+            let redirectURL = URL(string: connection.redirectURI)
+            let callbackPort = UInt16(redirectURL?.port ?? 48912)
+            let callbackPath = redirectURL?.path ?? "/callback"
+
+            let pkce = try PKCEChallenge.generate()
+            let loopback = LoopbackOAuthServer()
+            activeLoopbackServer = loopback
+            let boundPort = try await loopback.start(
+                port: callbackPort,
+                callbackPath: callbackPath,
+                expectedState: pkce.state
+            )
+
+            let effectiveRedirectURI: String
+            if let redirectURL, var comps = URLComponents(url: redirectURL, resolvingAgainstBaseURL: false) {
+                comps.port = Int(boundPort)
+                effectiveRedirectURI = comps.url?.absoluteString ?? connection.redirectURI
+            } else {
+                effectiveRedirectURI = "http://127.0.0.1:\(boundPort)/callback"
+            }
+
+            var effectiveClientID = connection.clientID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if effectiveClientID.isEmpty {
+                guard let regEndpoint = registrationEndpoint else {
+                    await loopback.stop()
+                    activeLoopbackServer = nil
+                    mcpStatusMessage = "Enter a Client ID in Edit Setup (this server did not advertise Dynamic Client Registration)."
+                    return
+                }
+                effectiveClientID = try await mcpManager.oauthClient.registerDynamicClient(
+                    registrationEndpoint: regEndpoint,
+                    redirectURI: effectiveRedirectURI
+                )
+            }
+
+            let authURL = try mcpManager.oauthClient.buildAuthorizationURL(
+                authorizationEndpoint: authEndpoint,
+                clientID: effectiveClientID,
+                redirectURI: effectiveRedirectURI,
+                scopes: resolvedScopes,
+                pkce: pkce,
+                resourceURL: resourceURL
+            )
+
+            mcpStatusMessage = "Opening browser for \(connection.name) sign-in…"
+            NSWorkspace.shared.open(authURL)
+
+            let code = try await loopback.awaitAuthorizationCode(timeoutSeconds: 180)
+            activeLoopbackServer = nil
+
+            let storedSecret = try? await vaultManager.connectorSecret(
+                connectorID: connection.id,
+                key: MCPVaultSecretKeys.clientSecret
+            )
+
+            let tokenSet = try await mcpManager.oauthClient.exchangeAuthorizationCode(
+                tokenEndpoint: tokenEndpoint,
+                code: code,
+                codeVerifier: pkce.codeVerifier,
+                clientID: effectiveClientID,
+                clientSecret: storedSecret,
+                redirectURI: effectiveRedirectURI,
+                resourceURL: resourceURL
+            )
+
+            try await mcpManager.saveOAuthCredentials(
+                tokens: tokenSet,
+                clientID: effectiveClientID,
+                clientSecret: storedSecret,
+                authorizationEndpoint: authEndpoint,
+                tokenEndpoint: tokenEndpoint,
+                for: connection.id
+            )
+
+            var updated = connection
+            updated.clientID = effectiveClientID
+            updated.authorizationEndpoint = authEndpoint.absoluteString
+            updated.tokenEndpoint = tokenEndpoint.absoluteString
+            updated.redirectURI = effectiveRedirectURI
+            upsertMCPConnection(updated)
+
+            await refreshMCPCredentialStatus()
+            await saveWorkspaceNow()
+            await connectAndDiscoverTools(for: updated)
+        } catch {
+            await activeLoopbackServer?.stop()
+            activeLoopbackServer = nil
+            mcpStatusMessage = "OAuth sign-in failed for '\(connection.name)': \(error.localizedDescription)"
+        }
+    }
+
+    func enqueueElicitation(_ request: MCPElicitationRequest) {
+        guard !pendingElicitations.contains(where: { $0.id == request.id }) else { return }
+        pendingElicitations.append(request)
+
+        let bot = selectedPersona
+        let threadID = activeThreadID
+        let kind: PendingAttentionKind = (request.mode == .clientApproval) ? .yesNoApproval : .reviewInApp
+        let fingerprint = PendingAttentionRecord.computeFingerprint(
+            connectionID: request.connectionID,
+            toolName: request.toolName,
+            argumentsJSON: request.argumentsPreview
+        )
+        let record = PendingAttentionRecord(
+            id: request.id,
+            botID: bot.id,
+            botName: bot.name,
+            threadID: threadID,
+            kind: kind,
+            actionSummary: request.message,
+            actionFingerprint: fingerprint,
+            connectionID: request.connectionID,
+            toolName: request.toolName,
+            isPrivate: request.codePreview != nil,
+            requiresVaultOrSignIn: !isVaultUnlocked && request.connectionID != "desktop-browser",
+            requiresExtraInput: request.mode == .form || request.mode == .url
+        )
+
+        Task {
+            await attentionCoordinator.register(record)
+            await saveWorkspaceNow()
+            if let payload = await attentionCoordinator.buildNotificationPayload(
+                for: record.id,
+                botNotificationsEnabled: bot.notificationsEnabled
+            ) {
+                onNotifyAttention?(payload)
+            }
+        }
+    }
+
+    func respondToElicitation(
+        requestID: UUID,
+        action: MCPElicitationAction,
+        content: [String: JSONValue]? = nil
+    ) {
+        let pendingRequest = pendingElicitations.first(where: { $0.id == requestID })
+        let decision: PendingAttentionDecision = switch action {
+        case .accept: .allowOnce
+        case .decline: .deny
+        case .cancel: .cancel
+        }
+
+        Task {
+            let expectedFingerprint = pendingRequest.map {
+                PendingAttentionRecord.computeFingerprint(
+                    connectionID: $0.connectionID,
+                    toolName: $0.toolName,
+                    argumentsJSON: $0.argumentsPreview
+                )
+            }
+            let vaultUnlocked = await vaultManager.isUnlocked()
+            let connectorAccessValid: Bool = {
+                guard let connID = pendingRequest?.connectionID,
+                      connID != "desktop-browser",
+                      connID != "attention-test" else {
+                    return true
+                }
+                return mcpConnections.first(where: { $0.id == connID })?.isEnabled ?? true
+            }()
+
+            let resolution = await attentionCoordinator.resolve(
+                requestID: requestID,
+                decision: decision,
+                expectedFingerprint: expectedFingerprint,
+                vaultUnlocked: vaultUnlocked,
+                connectorAccessValid: connectorAccessValid
+            )
+
+            switch resolution {
+            case .resolved(let resolvedDecision, let record):
+                pendingElicitations.removeAll { $0.id == requestID }
+                onDismissNotification?(requestID)
+                let label: String = switch resolvedDecision {
+                case .allowOnce: "Allowed once: \(record.actionSummary)"
+                case .deny: "Denied: \(record.actionSummary)"
+                case .cancel: "Cancelled: \(record.actionSummary)"
+                }
+                await workingContextStore.append(ChatMessage(role: .system, content: label))
+                await syncActiveThreadMessagesFromWorkingContext()
+                await refreshState()
+                await saveWorkspaceNow()
+                await mcpManager.respondToElicitation(
+                    requestID: requestID,
+                    response: MCPElicitationResponse(action: action, content: content)
+                )
+
+            case .expired(let record):
+                pendingElicitations.removeAll { $0.id == requestID }
+                onDismissNotification?(requestID)
+                await workingContextStore.append(
+                    ChatMessage(role: .system, content: "Expired request could not run: \(record.actionSummary)")
+                )
+                await syncActiveThreadMessagesFromWorkingContext()
+                await refreshState()
+                await saveWorkspaceNow()
+                await mcpManager.respondToElicitation(
+                    requestID: requestID,
+                    response: MCPElicitationResponse(action: .cancel)
+                )
+
+            case .accessCheckFailed(let reason, _):
+                statusBanner = reason
+                await openAttentionRequest(requestID: requestID)
+
+            case .fingerprintMismatch:
+                pendingElicitations.removeAll { $0.id == requestID }
+                onDismissNotification?(requestID)
+                statusBanner = "Action changed before approval; cancelled for safety."
+                await mcpManager.respondToElicitation(
+                    requestID: requestID,
+                    response: MCPElicitationResponse(action: .cancel)
+                )
+
+            case .alreadyResolved:
+                pendingElicitations.removeAll { $0.id == requestID }
+                onDismissNotification?(requestID)
+
+            case .notFound:
+                pendingElicitations.removeAll { $0.id == requestID }
+                onDismissNotification?(requestID)
+                await mcpManager.respondToElicitation(
+                    requestID: requestID,
+                    response: MCPElicitationResponse(action: action, content: content)
+                )
+            }
+        }
+    }
+
+    func openAttentionRequest(requestID: UUID) async {
+        guard let record = await attentionCoordinator.record(for: requestID) else { return }
+        if let persona = personas.first(where: { $0.id == record.botID }) {
+            selectedPersona = persona
+        }
+        if let threadID = record.threadID,
+           let thread = threads.first(where: { $0.id == threadID }) {
+            selectThread(thread)
+        }
+        if record.state == .expired {
+            statusBanner = "Request expired: \(record.actionSummary)"
+        }
+    }
+
+    func triggerSampleAttentionAlert(requiresApproval: Bool) {
+        let bot = selectedPersona
+        if requiresApproval {
+            let sample = MCPElicitationRequest(
+                connectionID: "attention-test",
+                serverName: bot.name,
+                toolName: "sample_action",
+                mode: .clientApproval,
+                message: "Allow \(bot.name) to run a sample workspace check?",
+                argumentsPreview: #"{"check":"status"}"#,
+                isReadOperation: false
+            )
+            enqueueElicitation(sample)
+        } else {
+            let record = PendingAttentionRecord(
+                botID: bot.id,
+                botName: bot.name,
+                threadID: activeThreadID,
+                kind: .taskReady,
+                actionSummary: "\(bot.name) task is ready for review.",
+                actionFingerprint: PendingAttentionRecord.computeFingerprint(connectionID: nil, toolName: "task_ready", argumentsJSON: nil)
+            )
+            Task {
+                await attentionCoordinator.register(record)
+                if let payload = await attentionCoordinator.buildNotificationPayload(
+                    for: record.id,
+                    botNotificationsEnabled: bot.notificationsEnabled
+                ) {
+                    onNotifyAttention?(payload)
+                }
+            }
+        }
+    }
+
+    private func upsertMCPConnection(_ connection: MCPServerConnection) {
+        if let idx = mcpConnections.firstIndex(where: { $0.id == connection.id }) {
+            mcpConnections[idx] = connection
+        } else {
+            mcpConnections.append(connection)
+        }
+    }
+
+    // MARK: - Marketplace Registry & Dynamic Setup Installation
+
+    func refreshMarketplaceCatalog(remoteURLString: String? = nil) async {
+        isLoadingMarketplace = true
+        defer { isLoadingMarketplace = false }
+
+        let targetString = (remoteURLString ?? marketplaceCatalogURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let remoteURL = targetString.isEmpty ? nil : URL(string: targetString)
+        let fallbackData = BrokAppResources.loadBundledCatalogData()
+
+        do {
+            marketplaceEntries = try await marketplaceRegistry.loadCatalog(
+                remoteURL: remoteURL,
+                bundledFallbackData: fallbackData
+            )
+            if let remoteURLString {
+                marketplaceCatalogURL = remoteURLString
+                scheduleWorkspaceSave()
+            }
+        } catch {
+            mcpStatusMessage = "Marketplace catalog error: \(error.localizedDescription)"
+        }
+    }
+
+    func installMarketplaceEntry(
+        _ entry: MarketplaceCatalogEntry,
+        configValues: [String: String],
+        secretValues: [String: String]
+    ) async {
+        do {
+            try await marketplaceRegistry.validateForInstallation(
+                entry.manifest,
+                allowUnsignedTemplates: allowUnsignedTemplates
+            )
+        } catch {
+            mcpStatusMessage = error.localizedDescription
+            return
+        }
+
+        let nonEmptySecrets = secretValues.filter {
+            !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        if !nonEmptySecrets.isEmpty {
+            if !(await vaultManager.isUnlocked()) {
+                let unlocked = await unlockVault(reason: "Unlock Brok Bot Vault to store connector secrets")
+                guard unlocked else {
+                    mcpStatusMessage = vaultErrorMessage ?? "Vault is locked; connector secrets could not be saved."
+                    return
+                }
+            }
+            do {
+                try await vaultManager.setConnectorSecrets(nonEmptySecrets, for: entry.manifest.id)
+            } catch {
+                mcpStatusMessage = "Failed to vault connector secrets: \(error.localizedDescription)"
+                return
+            }
+        }
+
+        let connection = marketplaceRegistry.makeConnection(
+            from: entry.manifest,
+            configValues: configValues
+        )
+        upsertMCPConnection(connection)
+        await refreshMCPCredentialStatus()
+        await saveWorkspaceNow()
+        mcpStatusMessage = "Installed '\(entry.manifest.name)' (\(entry.verification.badgeLabel))."
     }
 }

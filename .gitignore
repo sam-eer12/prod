@@ -37,3 +37,7 @@ vault.enc
 .idea/
 .vscode/
 *.iml
+
+# Python bytecode
+__pycache__/
+*.py[cod]

@@ -1,0 +1,35 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "railway-mcp",
+  "name": "Railway (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Railway hosted Streamable HTTP MCP server for inspecting projects, services, deployments, and runtime logs via OAuth 2.1 + PKCE.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.railway.com"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": []
+  },
+  "permissions": [
+    "railway.projects.read",
+    "railway.deployments.read",
+    "railway.logs.read"
+  ],
+  "tools": [
+    {
+      "name": "list_projects",
+      "description": "List Railway projects, services, deployments, and logs.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

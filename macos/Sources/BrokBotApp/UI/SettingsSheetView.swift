@@ -63,6 +63,8 @@ struct SettingsSheetView: View {
 
                 ScrollView {
                     VStack(spacing: 14) {
+                        accountSection
+                        desktopBrowserSection
                         byokSection
                         permanentMemorySection
                         computeAndStartupSection
@@ -75,6 +77,241 @@ struct SettingsSheetView: View {
         .onAppear {
             customEndpointInput = viewModel.byokConfig.customBaseURL?.absoluteString ?? ""
         }
+    }
+
+    // MARK: - Firebase Account (Google & Apple Sign-In)
+
+    private var accountSection: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack {
+                Label("Account (Firebase Auth)", systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                if let projectID = viewModel.firebaseConfig?.projectID {
+                    Text(projectID)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(accentColor.opacity(0.92))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(accentColor.opacity(0.14))
+                        .clipShape(Capsule())
+                }
+            }
+
+            if let user = viewModel.firebaseUser {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(user.displayName ?? user.email ?? "Signed-In User")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text(user.providerLabel)
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundStyle(Color.green)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(Color.green.opacity(0.16))
+                                .clipShape(Capsule())
+                        }
+                        if let email = user.email, !email.isEmpty {
+                            Text(email)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.68))
+                        }
+                        Text("UID: \(user.uid)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.45))
+                    }
+
+                    Spacer()
+
+                    Button("Sign Out") {
+                        Task {
+                            await viewModel.signOutFirebase()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(.red.opacity(0.92))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.red.opacity(0.14))
+                    .clipShape(Capsule())
+                }
+            } else {
+                Text("Sign in with Google or Apple using Firebase Authentication (`brokbot-auth-2026`).")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.white.opacity(0.68))
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            await viewModel.signInWithGoogle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if viewModel.isAuthenticatingAccount {
+                                ProgressView().controlSize(.mini)
+                            } else {
+                                Image(systemName: "globe")
+                                    .font(.system(size: 12))
+                            }
+                            Text("Continue with Google")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 7)
+                        .background(accentColor.opacity(0.24))
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isAuthenticatingAccount || viewModel.firebaseConfig == nil)
+
+                    Button {
+                        Task {
+                            await viewModel.signInWithApple()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "apple.logo")
+                                .font(.system(size: 12))
+                            Text("Continue with Apple")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 7)
+                        .background(Color.white.opacity(0.12))
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isAuthenticatingAccount || viewModel.firebaseConfig == nil)
+
+                    Spacer()
+                }
+            }
+
+            if let status = viewModel.authStatusMessage, !status.isEmpty {
+                Text(status)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+        }
+        .padding(14)
+        .liquidGlass(cornerRadius: 16, glowColor: accentColor, material: .hudWindow)
+    }
+
+    // MARK: - Desktop Browser Integration
+
+    private var desktopBrowserSection: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack {
+                Label("Desktop Browser Integration", systemImage: "safari.fill")
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                Toggle(
+                    "Enable Browser Tools",
+                    isOn: Binding(
+                        get: { viewModel.desktopBrowserConfig.isEnabled },
+                        set: { enabled in
+                            var updated = viewModel.desktopBrowserConfig
+                            updated.isEnabled = enabled
+                            viewModel.updateDesktopBrowserConfig(updated)
+                        }
+                    )
+                )
+                .toggleStyle(.switch)
+                .font(.system(size: 11.5))
+                .foregroundStyle(.white.opacity(0.88))
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Preferred Desktop Browser")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(.white.opacity(0.88))
+                    Text("Bot can search the web, read pages, open links in this browser, and inspect active tabs.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+                Spacer()
+                Picker(
+                    "Browser",
+                    selection: Binding(
+                        get: { viewModel.desktopBrowserConfig.preferredBrowser },
+                        set: { target in
+                            var updated = viewModel.desktopBrowserConfig
+                            updated.preferredBrowser = target
+                            viewModel.updateDesktopBrowserConfig(updated)
+                        }
+                    )
+                ) {
+                    ForEach(DesktopBrowserTarget.allCases) { target in
+                        Text(target.displayName).tag(target)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 190)
+            }
+
+            Toggle(
+                isOn: Binding(
+                    get: { viewModel.desktopBrowserConfig.requireApprovalToOpenLinks },
+                    set: { reqApproval in
+                        var updated = viewModel.desktopBrowserConfig
+                        updated.requireApprovalToOpenLinks = reqApproval
+                        viewModel.updateDesktopBrowserConfig(updated)
+                    }
+                )
+            ) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Require Approval Before Opening Links")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.92))
+                    Text("Pause at the Approval Gate before `browser_open_url` launches your desktop browser.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+            }
+            .toggleStyle(.switch)
+
+            HStack(spacing: 10) {
+                Button("Inspect Active Tab") {
+                    Task {
+                        await viewModel.inspectActiveDesktopBrowserTab()
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 5)
+                .background(accentColor.opacity(0.24))
+                .clipShape(Capsule())
+
+                if let status = viewModel.browserStatusMessage, !status.isEmpty {
+                    Text(status)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+            }
+        }
+        .padding(14)
+        .liquidGlass(cornerRadius: 16, glowColor: accentColor, material: .hudWindow)
     }
 
     // MARK: - BYOK Engine & Vault Keys
@@ -674,6 +911,17 @@ struct SettingsSheetView: View {
                     .padding(.horizontal, 11)
                     .padding(.vertical, 5)
                     .background(accentColor.opacity(0.24))
+                    .clipShape(Capsule())
+
+                    Button("Test Bot Approval") {
+                        viewModel.triggerSampleAttentionAlert(requiresApproval: true)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5)
+                    .background(Color.orange.opacity(0.24))
                     .clipShape(Capsule())
                 }
 

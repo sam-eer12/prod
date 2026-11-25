@@ -430,6 +430,35 @@ fun LiquidGlassSurface(
 
 ---
 
+### 4.3. Bot Creation, Customization, and Attention Notifications
+
+Extend the existing macOS persona editor and approval flow, then bring the same experience to Android in phases 3A and 3D.
+
+#### Create or edit a bot
+
+1. Open **Teammates → + → New Bot**. Start with a blank bot or use a built-in persona as a starting point.
+2. Enter a **name**, **role**, and **custom instructions**. Show the instructions in an editable field when starting from a preset. Use the saved instructions when assembling prompts for that bot.
+3. Choose a **profile shape**, **color**, and **face or icon**. Use original solid-color silhouettes with simple eye shapes, inspired by the supplied reference. Include circles, rounded squares, soft triangles, clouds, and pebbles. Offer color swatches and a custom picker. Show a live preview at the sizes used in the teammate list and chat header. Give each option a readable label and show selection with an outline or checkmark.
+4. Choose whether that bot can send **Needs attention** notifications, then select **Create Bot**. Open the new bot's chat and show its avatar in the list and header. **Edit Bot** reopens the same form and keeps the bot's existing conversations.
+
+Save appearance and notification preferences with the existing persona record. Load a default avatar for older records and retain their saved colors and icons. The bot's instructions and notification preferences leave connector authorization under the existing account scopes and approval gate.
+
+#### When a bot needs attention
+
+| Situation | Local notification | What happens next |
+| --- | --- | --- |
+| A task is ready for review or needs an answer | Show the bot's name and a short status. | Tapping opens the specific chat or task. |
+| A tool is paused for a yes-or-no approval | Show the bot's name, a brief action summary, and **Allow once** and **Deny**. | **Allow once** resumes the exact pending action after access checks. **Deny** cancels the action and records the decision in chat. |
+| A request requires sign-in, unlocking the vault, or more input | Show **Review in Brok Bot**. | Open the matching request in the app so the user can complete the required step and make a decision. |
+
+Use the same pending request for the chat card and notification. Post through the device's local notification APIs from an active task or supported background routine. Keep the request in chat when notifications are muted, disabled, or dismissed. Use a generic lock-screen summary for private tasks and include only an opaque request ID in the notification's action data. Use **Review in Brok Bot** when the preview hides details the user needs to make a decision.
+
+Route both notification buttons through the existing approval gate. Check that the request is still pending, the action still matches what the user saw, and the relevant connector access is still valid. Apply a decision at most once, dismiss the notification after resolution, and show expired requests in chat. Requests that cannot resume after a restart expire. The notification approves a single app action. Use the platform's consent screen for OS permissions and the provider's consent screen for connector access.
+
+On macOS, extend `PersonaEditorSheet`, `BotPersona`, `LocalNotificationSpec`, and `LocalNotificationManager`. On Android, use a Compose editor and `NotificationManager` with scoped action intents that route to the same approval logic used in chat. [Apple notification actions](https://developer.apple.com/documentation/usernotifications/declaring-your-actionable-notification-types) · [Android notification actions](https://developer.android.com/develop/ui/views/notifications/build-notification#Actions)
+
+---
+
 ## 5. Performance, Multithreading & Hardware Acceleration
 
 ### 5.1. Concurrency Engine Configuration
@@ -623,21 +652,19 @@ gantt
 
 ---
 
-### Phase 2: Server-Side Modular Connector Marketplace & Core Bridges (Status: Active / Next)
+### Phase 2: Complete MCP Client, Marketplace & Core Bridges (Status: Completed)
 
-- **Goal:** Enable dynamic installation, cryptographic verification, and user-approved execution of third-party connectors (Blender 3D, Google Workspace, and MCP servers) without requiring app rebuilds.
-- **Sub-Phases & Concrete Deliverables:**
-  - **2A — Remote Manifest Registry, Ed25519 Signature Verification & Dynamic Setup UI:** Build remote `catalog.json` fetcher/cache, CryptoKit Ed25519 manifest signature verifier (`signature.algorithm == "ed25519"`), schema validator matching `connector-manifest.schema.json`, and dynamic Setup UI renderer driven by `auth.setupFields` and permission disclosures.
-  - **2B — Dynamic Tool Router & Interactive Approval Gate (Chat Cards + Actionable Notifications):** Implement `ToolRouter` bridging LLM tool calls to installed connector runtimes; pause any tool flagged `requiresApproval: true` to present an inline Liquid Glass Approval Card (displaying args/`bpy` code diff) or actionable `UNUserNotificationCenter` (`Approve` / `Deny`) banner.
-  - **2C — Blender 3D Local Socket Bridge (`127.0.0.1:9876` JSON-RPC 2.0 + Python addon + inline PNG render preview):** Build async TCP JSON-RPC 2.0 client targeting `127.0.0.1:9876`, ship companion Blender `bpy` socket server addon under `marketplace/addons/blender/`, and render returned PNG viewport buffers inline inside chat messages.
-  - **2D — Google Workspace Connector (OAuth 2.0 PKCE loopback + Gmail/Calendar REST + incremental delta polling):** Implement `127.0.0.1` loopback OAuth 2.0 PKCE authenticator storing refresh tokens in `BrokVaultManager`, Gmail & Google Calendar REST clients, incremental `historyId` / `syncToken` background polling, and morning briefing routine synthesis.
-  - **2E — MCP Client (Streamable HTTP + Local Stdio runner):** Integrate `modelcontextprotocol/swift-sdk` in `Package.swift` for remote Streamable HTTP MCP servers and sandboxed local `Process` stdio runners (Python/Node) scheduled on `BrokComputeEngine`.
-- **Target Paths:** `marketplace/**`, `macos/Package.swift`, `macos/Sources/BrokBotCore/Marketplace/**`, `macos/Sources/BrokBotCore/Connectors/**`, `macos/Sources/BrokBotApp/UI/**`, `macos/Tests/BrokBotCoreTests/**`.
-- **Dependencies:** Phase `1` (`1B`, `1C`, `1D`, `1E`). Within Phase 2: `2A` unlocks `2B`; `2C`, `2D`, and `2E` execute in parallel once `2B` defines the `ToolRouter` & Approval Gate contract.
+- **Goal:** Deliver the complete Phase 2 macOS connector ecosystem built MCP-client-first: remote/bundled Marketplace Registry with Ed25519 signature verification and Dynamic Setup UI, Streamable HTTP + Local Stdio MCP runners, hosted presets (**Google Workspace Personal Mode** [Gmail, Drive, Docs, Slides, Sheets, Calendar], **Stripe**, **Vercel**, **Railway**, **Cloudflare**, **Netlify**, **Render**, **Supabase**, **Neon**, **GitHub**, **Sentry**, **PostHog**, **Linear**, **Notion**, **Atlassian**, **Slack**, **Figma**), Blender 3D TCP JSON-RPC bridge (`127.0.0.1:9876`) with inline PNG previews, and a unified Client-Side Approval Gate + Server-Driven MCP Elicitation UI.
+- **Concrete Deliverables:**
+  - **2A — Remote Marketplace Registry, Ed25519 Verification & Dynamic Setup UI (`MarketplaceRegistry.swift`, `MCPServersSheetView.swift`):** Fetch & cache remote `catalog.json` (with bundled fallback), validate against `connector-manifest.schema.json` rules, verify CryptoKit `Curve25519.Signing` Ed25519 signatures (strictly rejecting tampered manifests), and render Dynamic Setup forms from `auth.setupFields` storing secrets in `BrokVaultManager` (`vault.enc`).
+  - **2B — Unified Approval Gate & MCP Elicitation (`MCPConnectionManager.swift`, `MainWorkspaceView.swift`, `LocalNotificationManager.swift`):** Pause `requiresApproval: true` / `destructiveHint: true` calls (`blender_execute_script`, write tools) and server-driven `elicitation/create` prompts (Form & URL modes) with inline Liquid Glass Approval Cards (including monospace `bpy` script previews) and actionable `UNUserNotificationCenter` `[Approve]` / `[Deny]` banners.
+  - **2C — Blender 3D Local Socket Bridge (`BlenderBridgeClient.swift`, `marketplace/addons/blender/brokbot_blender_bridge.py`):** Async `NWConnection` TCP JSON-RPC 2.0 client targeting `127.0.0.1:9876`, companion Blender Python addon marshalling `bpy` on Blender's main thread, and inline PNG viewport render previews (`ChatAttachment`) inside chat bubbles.
+  - **2D — Hosted Streamable HTTP Presets & OAuth 2.1 PKCE (`MCPOAuthClient.swift`, `MCPStreamableHTTPClient.swift`):** Zero-polling hosted MCP presets for **Google Workspace Personal Mode** (**Gmail** `gmailmcp.googleapis.com/mcp/v1`, **Google Drive** `drivemcp.googleapis.com/mcp/v1`, **Google Docs** `docsmcp.googleapis.com/mcp/v1`, **Google Slides** `slidesmcp.googleapis.com/mcp/v1`, **Google Sheets** `sheetsmcp.googleapis.com/mcp/v1`, **Google Calendar** `calendarmcp.googleapis.com/mcp/v1`), **Cloud & Deploy** (**Vercel** `mcp.vercel.com`, **Railway** `mcp.railway.com`, **Cloudflare** `mcp.cloudflare.com/mcp`, **Netlify** `mcp.netlify.com/mcp`, **Render** `mcp.render.com/mcp`), **Payments & Data** (**Stripe** `mcp.stripe.com`, **Supabase** `mcp.supabase.com/mcp`, **Neon** `mcp.neon.tech/mcp`), **Dev & Observability** (**GitHub** `api.githubcopilot.com/mcp/`, **Sentry** `mcp.sentry.dev/mcp`, **PostHog** `mcp.posthog.com/mcp`, **Linear** `mcp.linear.app/mcp/readonly`), and **Productivity & Design** (**Notion** `mcp.notion.com/mcp`, **Atlassian** `mcp.atlassian.com/v2/mcp`, **Slack** `mcp.slack.com/mcp`, **Figma** `mcp.figma.com/mcp`) with RFC 9728/8414 discovery, RFC 7591 DCR, loopback `127.0.0.1` PKCE, token refresh, multi-turn LLM tool execution, and daily request metering.
+  - **2E — Local Stdio MCP Runner (`MCPStdioClient.swift`):** Execute local `Process` stdio MCP servers (`npx`, `uvx`, `/usr/bin/python3`) scheduled on `BrokComputeEngine` with vaulted API token environment injection.
+- **Target Paths:** `marketplace/**`, `.github/workflows/ci.yml`, `macos/Sources/BrokBotCore/Marketplace/**`, `macos/Sources/BrokBotCore/MCP/**`, `macos/Sources/BrokBotCore/Connectors/**`, `macos/Sources/BrokBotApp/UI/**`, `macos/Tests/BrokBotCoreTests/**`.
 - **Exit Criteria / Verification Gate:**
-  - Tampered manifests fail Ed25519 verification and are rejected before tool registration.
-  - Every `requiresApproval: true` call (`blender_execute_script`, `gmail_send_message`, `gcal_create_event`) blocks execution until explicit user approval via chat card or local notification.
-  - End-to-end tests verify JSON-RPC 2.0 round-trip with a mock Blender socket returning PNG bytes, Google Workspace PKCE token exchange + delta sync, and MCP tool discovery over Streamable HTTP and stdio.
+  - `Phase2MarketplaceAndBridgesTests` and `MCPClientTests` verify Ed25519 signing & tamper rejection, local stdio MCP round-trips, mock Blender TCP JSON-RPC + inline PNG bytes + denied/approved `bpy` write gates, PKCE + RFC 9728/8414/7591 + token refresh, stateful & stateless Streamable HTTP, SSE elicitation, and multi-turn `BYOKModelClient` tool execution.
+  - `cd macos && swift test && swift build` and `bash scripts/build-macos.sh && codesign --verify --deep --strict macos/dist/BrokBot.app` succeed.
 
 ---
 
@@ -645,10 +672,10 @@ gantt
 
 - **Goal:** Bring full feature parity—Liquid Glass Compose UI, StrongBox hardware security, Dual-Space Context, BYOK models, remote connectors, and battery-aware background execution—to Android phones and tablets.
 - **Sub-Phases & Concrete Deliverables:**
-  - **3A — Compose Liquid Glass Responsive Phone/Tablet UI (`haze`):** Build adaptive `WindowSizeClass` phone/tablet layouts using Haze 1.3.1 (`hazeSource` + `clip(shape).hazeEffect`), multi-bot drawer, streaming markdown cards, inline tool Approval Cards, and Settings + Memory Inspector sheets.
+  - **3A — Compose Liquid Glass Responsive Phone/Tablet UI (`haze`):** Build adaptive `WindowSizeClass` phone/tablet layouts using Haze 1.3.1 (`hazeSource` + `clip(shape).hazeEffect`), multi-bot drawer, streaming markdown cards, inline tool Approval Cards, and Settings + Memory Inspector sheets. Add the [bot creation and avatar editor](#43-bot-creation-customization-and-attention-notifications) to the drawer.
   - **3B — Android Keystore StrongBox + Tink Hardware Vault & Dual-Space Context Parity:** Replace in-memory storage with `BiometricPrompt` + Android Keystore (StrongBox-backed where supported) + Google Tink AEAD encrypted storage (`vault.enc` / encrypted DataStore); reach 100% behavioral parity with macOS `WorkingContextStore`, `PermanentMemoryManager`, and `SemanticCompactor`.
   - **3C — BYOK Multi-Model & Remote Connector Runtime Parity (Custom Tabs PKCE, Remote MCP):** Implement Kotlin SSE streaming + tool-calling clients for all 5 BYOK providers, marketplace catalog fetcher + Ed25519 verifier, Android Custom Tabs OAuth 2.0 PKCE loopback/redirect for Google Workspace, and remote Streamable HTTP MCP client.
-  - **3D — Silent `BootReceiver`, `WorkManager` Pollers, `AlarmManager` Exact Routines & Actionable `NotificationManager`:** Ensure `BrokBootReceiver` initializes `WorkManager` delta polling chains silently without launching `MainActivity`, schedule exact morning routines via `AlarmManager`, and wire `NotificationManager` `[Approve]` / `[Deny]` action receivers.
+  - **3D — Silent `BootReceiver`, `WorkManager` Pollers, `AlarmManager` Exact Routines & Actionable `NotificationManager`:** Ensure `BrokBootReceiver` initializes `WorkManager` delta polling chains silently without launching `MainActivity`, schedule exact morning routines via `AlarmManager`, and wire local [bot attention notifications](#43-bot-creation-customization-and-attention-notifications) to the chat and approval flow.
   - **3E — Coroutines Thread Pool (`1`/`2`/`4`/`Auto`) & NNAPI/Vulkan Hardware Acceleration:** Bind `BrokComputeEngine` to a bounded `ExecutorCoroutineDispatcher` (`1`/`2`/`4`/`Auto`) and implement NNAPI/Vulkan delegate toggles with automatic CPU fallback under Android Battery Saver.
 - **Target Paths:** `android/gradle/libs.versions.toml`, `android/app/build.gradle.kts`, `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/java/org/brokbot/android/**`, `android/app/src/test/java/org/brokbot/android/**`.
 - **Dependencies:** Phase `0` (`0D`, `0E`) and protocol/schema contracts frozen in Phase `1`–`2` (`1D`, `2A`, `2B`). Within Phase 3: `3A` and `3B` run in parallel; `3C` and `3D` depend on `3B`; `3E` runs in parallel with `3C`/`3D`.
@@ -685,8 +712,8 @@ To maximize throughput without file-write conflicts, independent sub-phases map 
 | :---: | :--- | :--- | :--- | :--- |
 | **Phase 0** *(Completed)* | `0A` (`assets/**`), `0B` (`.gitignore`, `LICENSE`, `docs/`, `README.md`, `marketplace/**`) | `0C` (`macos/**`, `scripts/build-macos.sh`) | `0D` (`android/**`) | `0E` Full cross-platform build, test & link verification |
 | **Phase 1** *(Completed)* | 17-icon SVG suite (`assets/icons/svg/`), `assets/README.md`, `docs/` (`v1.3.0`), `README.md` | `1A` (`BrokBotApp/UI/`) ∥ `1B` (`BrokBotCore/Vault/`) → `1C`, `1D` → `1E` | `ic_brok_notification.xml` drawable | macOS Touch ID vault + 5-provider SSE streaming + `Cmd+Shift+B` & signed `.app` bundle |
-| **Phase 2** *(Active)* | `2A` (`marketplace/manifests/**`, registry) | `2B` (`ToolRouter`, Approval UI) → `2C` (Blender), `2D` (Google), `2E` (MCP) | — | Ed25519 verification + interactive Approval Gate E2E suite |
-| **Phase 3** | — | — | `3A` (`ui/`) ∥ `3B` (`Vault`, `Context`) → `3C`, `3D`, `3E` | Android APK + `BOOT_COMPLETED` silent worker & StrongBox check |
+| **Phase 2** *(Completed Beta)* | `marketplace/catalog.json`, `marketplace/manifests/**` | `BrokBotCore/MCP/**`, `BrokBotApp/UI/MCPServersSheetView.swift`, `WorkspaceViewModel`, `MCPClientTests` | — | OAuth 2.1 PKCE + Streamable HTTP + Elicitation + `BYOKModelClient` tool round-trips |
+| **Phase 3** | — | Bot avatar editor and local attention notifications (§4.3) | `3A` (`ui/`) ∥ `3B` (`Vault`, `Context`) → `3C`, `3D`, `3E` | Android APK + `BOOT_COMPLETED` silent worker, StrongBox check, and bot creation and notification checks |
 | **Phase 4** | `4D` (Audit & profiling reports), `4E` (Homebrew/F-Droid specs) | `4A` (Swift Automerge), `4B` (Bonjour/mTLS), `4C` (WhisperKit) | `4A` (Kotlin Automerge), `4B` (NSD/mTLS), `4C` (On-device speech) | Two-device E2EE CRDT sync + v1.0 release artifact verification |
 
 ---
@@ -705,3 +732,5 @@ To maximize throughput without file-write conflicts, independent sub-phases map 
    - Background polling processes events silently.
    - Clicking the menu bar icon reveals the main window in < 150ms.
 4. **Compute Settings Test:** Toggle between 1, 2, and 4 threads in Settings. Run concurrent tool searches and verify CPU thread allocation via Activity Monitor.
+5. **Bot customization.** On macOS and Android, create a bot with custom instructions and a shape, color, and face. Verify the avatar in the list and the chat header, confirm the instructions affect its replies, and verify that the settings survive relaunch. Edit the bot and confirm its existing chat remains linked to it. Load an older persona and verify its default avatar and existing appearance settings.
+6. **Local bot notifications.** Trigger an attention alert and verify it opens the right chat. Use **Allow once** and **Deny** on separate paused requests. Verify that only the approved action runs and it runs once, including when both the chat card and notification are used. Test expired requests, locked vault, disabled notifications, and relaunch. Check that private details stay out of the lock-screen preview.
