@@ -1,0 +1,10 @@
+{
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Brok Bot",
+        "supportEmail": "sameer870732@gmail.com"
+      }
+    }
+  }
+}
