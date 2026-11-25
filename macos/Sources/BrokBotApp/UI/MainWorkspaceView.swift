@@ -4,6 +4,21 @@ import SwiftUI
 
 /// Helper loading bundled macOS app resources safely from `Bundle.module`.
 enum BrokAppResources {
+    static func loadBundledCatalogData() -> Data? {
+        guard let url = Bundle.module.url(forResource: "catalog", withExtension: "json") else {
+            return nil
+        }
+        return try? Data(contentsOf: url)
+    }
+
+    static func loadFirebaseAppConfig() -> FirebaseAppConfig? {
+        guard let url = Bundle.module.url(forResource: "GoogleService-Info", withExtension: "plist"),
+              let data = try? Data(contentsOf: url) else {
+            return nil
+        }
+        return try? FirebaseAppConfig.decode(fromPlistData: data)
+    }
+
     static func loadLogoImage() -> NSImage? {
         guard let url = Bundle.module.url(forResource: "logo", withExtension: "png") else {
             return nil
@@ -97,6 +112,9 @@ struct MainWorkspaceView: View {
                 viewModel.updatePersona(updatedPersona)
             }
         }
+        .sheet(isPresented: $viewModel.isShowingMCPServers) {
+            MCPServersSheetView(viewModel: viewModel)
+        }
     }
 
     // MARK: - Sidebar
@@ -140,7 +158,7 @@ struct MainWorkspaceView: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help("Add custom specialist persona")
+                .help("New Bot")
             }
             .padding(.horizontal, 4)
 
@@ -184,7 +202,8 @@ struct MainWorkspaceView: View {
             }
             .frame(maxHeight: .infinity)
 
-            // Vault Lock/Unlock Status Pill
+            // Firebase Account & Vault Lock/Unlock Status Pills
+            accountStatusPill
             vaultStatusPill
 
             // Dual-Space Context summary badges
@@ -215,6 +234,28 @@ struct MainWorkspaceView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             // Footer controls
+            Button {
+                viewModel.isShowingMCPServers = true
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "network")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(accentColor)
+                    Text("MCP Servers")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.92))
+                    Spacer()
+                    Text("\(viewModel.activeMCPServerCount) · \(viewModel.activeMCPToolCount) tools")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.white.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
             HStack(spacing: 8) {
                 Button {
                     viewModel.resetWorkingContext()
@@ -256,12 +297,7 @@ struct MainWorkspaceView: View {
             viewModel.selectPersona(persona)
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: persona.symbolName)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(color)
-                    .frame(width: 26, height: 26)
-                    .background(color.opacity(0.14))
-                    .clipShape(Circle())
+                BotAvatarView(persona: persona, size: 28)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(persona.name)
@@ -289,17 +325,17 @@ struct MainWorkspaceView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            if !persona.isDefault {
-                Button {
-                    personaBeingEdited = persona
-                } label: {
-                    Label("Edit Persona", systemImage: "pencil")
-                }
+            Button {
+                personaBeingEdited = persona
+            } label: {
+                Label("Edit Bot", systemImage: "pencil")
+            }
 
+            if !persona.isDefault {
                 Button(role: .destructive) {
                     viewModel.deletePersona(persona)
                 } label: {
-                    Label("Delete Persona", systemImage: "trash")
+                    Label("Delete Bot", systemImage: "trash")
                 }
             }
         }
@@ -361,6 +397,44 @@ struct MainWorkspaceView: View {
                 Label("Delete Thread", systemImage: "trash")
             }
         }
+    }
+
+    private var accountStatusPill: some View {
+        Button {
+            viewModel.isShowingSettings = true
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: viewModel.firebaseUser == nil ? "person.crop.circle" : "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(viewModel.firebaseUser == nil ? .white.opacity(0.65) : accentColor)
+
+                Text(
+                    viewModel.firebaseUser?.displayName
+                        ?? viewModel.firebaseUser?.email
+                        ?? "Sign In · Google / Apple"
+                )
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(1)
+
+                Spacer()
+
+                if let provider = viewModel.firebaseUser?.providerLabel {
+                    Text(provider)
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(accentColor)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color.white.opacity(0.06))
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private var vaultStatusPill: some View {
@@ -436,6 +510,23 @@ struct MainWorkspaceView: View {
                 rollingSummaryBadge(summary)
             }
             messageStream
+            if !viewModel.pendingElicitations.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(viewModel.pendingElicitations) { elicitation in
+                        MCPElicitationCard(
+                            request: elicitation,
+                            accentColor: accentColor,
+                            onRespond: { action, content in
+                                viewModel.respondToElicitation(
+                                    requestID: elicitation.id,
+                                    action: action,
+                                    content: content
+                                )
+                            }
+                        )
+                    }
+                }
+            }
             floatingComposer
         }
         .padding(.top, 8)
@@ -443,10 +534,7 @@ struct MainWorkspaceView: View {
 
     private var headerBar: some View {
         HStack(spacing: 12) {
-            Circle()
-                .fill(accentColor)
-                .frame(width: 9, height: 9)
-                .shadow(color: accentColor.opacity(0.8), radius: 6)
+            BotAvatarView(persona: viewModel.selectedPersona, size: 34)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(viewModel.selectedPersona.name)
@@ -457,9 +545,35 @@ struct MainWorkspaceView: View {
                     .foregroundStyle(.white.opacity(0.60))
             }
 
+            Button {
+                personaBeingEdited = viewModel.selectedPersona
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.70))
+                    .padding(5)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Edit Bot")
+
             Spacer()
 
-            if viewModel.isStreaming {
+            if let toolStatus = viewModel.activeToolCallStatus {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(toolStatus)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.cyan.opacity(0.20))
+                .clipShape(Capsule())
+            } else if viewModel.isStreaming {
                 HStack(spacing: 6) {
                     ProgressView()
                         .controlSize(.small)
@@ -471,6 +585,49 @@ struct MainWorkspaceView: View {
                 .padding(.vertical, 5)
                 .background(accentColor.opacity(0.20))
                 .clipShape(Capsule())
+            }
+
+            if viewModel.desktopBrowserConfig.isEnabled {
+                Button {
+                    Task {
+                        await viewModel.grabActiveBrowserTabIntoDraft()
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "safari")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.cyan)
+                        Text("Grab Tab")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.90))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.cyan.opacity(0.14))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Capture active \(viewModel.desktopBrowserConfig.preferredBrowser.displayName) tab URL & title into composer")
+            }
+
+            if viewModel.activeMCPToolCount > 0 {
+                Button {
+                    viewModel.isShowingMCPServers = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "network")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.green)
+                        Text("\(viewModel.activeMCPToolCount) MCP")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.88))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.green.opacity(0.14))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
 
             // Active BYOK pill
@@ -694,6 +851,32 @@ struct MainWorkspaceView: View {
                     .background(Color.white.opacity(0.06))
                     .clipShape(Capsule())
                 }
+
+                if !message.attachments.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(message.attachments) { attachment in
+                            if let data = attachment.decodedData,
+                               let nsImage = NSImage(data: data) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Image(nsImage: nsImage)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(maxWidth: 420, maxHeight: 280)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                                        )
+                                    if let caption = attachment.caption, !caption.isEmpty {
+                                        Text(caption)
+                                            .font(.system(size: 10.5))
+                                            .foregroundStyle(.white.opacity(0.58))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
@@ -826,5 +1009,188 @@ private extension View {
         } else {
             self
         }
+    }
+}
+
+/// Interactive Liquid Glass card surfaced when a remote MCP server sends a Form or URL elicitation/approval prompt.
+private struct MCPElicitationCard: View {
+    let request: MCPElicitationRequest
+    let accentColor: Color
+    let onRespond: (MCPElicitationAction, [String: JSONValue]?) -> Void
+
+    @State private var textValues: [String: String] = [:]
+    @State private var boolValues: [String: Bool] = [:]
+
+    private var schemaProperties: [(key: String, schema: [String: JSONValue])] {
+        guard let props = request.requestedSchema?["properties"]?.objectValue else {
+            return []
+        }
+        return props
+            .sorted { $0.key < $1.key }
+            .compactMap { key, val in
+                guard let obj = val.objectValue else { return nil }
+                return (key, obj)
+            }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: request.mode == .url ? "link.badge.plus" : "shield.lefthalf.filled")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.orange)
+
+                Text("\(request.serverName) · \(request.toolName)")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Text(request.isReadOperation ? "Read Prompt" : "Write Approval")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(request.isReadOperation ? .cyan : .orange)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background((request.isReadOperation ? Color.cyan : Color.orange).opacity(0.16))
+                    .clipShape(Capsule())
+
+                Spacer()
+            }
+
+            Text(request.message)
+                .font(.system(size: 12.5))
+                .foregroundStyle(.white.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let codePreview = request.codePreview, !codePreview.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SCRIPT PREVIEW")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(.orange.opacity(0.90))
+                    ScrollView(.vertical) {
+                        Text(codePreview)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.90))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 140)
+                }
+                .padding(9)
+                .background(Color.black.opacity(0.38))
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Color.orange.opacity(0.30), lineWidth: 1)
+                )
+            } else if let args = request.argumentsPreview, !args.isEmpty {
+                Text(args)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.black.opacity(0.32))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+
+            if request.mode == .form && !schemaProperties.isEmpty {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(schemaProperties, id: \.key) { item in
+                        let label = item.schema["title"]?.stringValue ?? item.key
+                        let type = item.schema["type"]?.stringValue ?? "string"
+                        if type == "boolean" {
+                            Toggle(
+                                label,
+                                isOn: Binding(
+                                    get: { boolValues[item.key] ?? (item.schema["default"]?.boolValue ?? true) },
+                                    set: { boolValues[item.key] = $0 }
+                                )
+                            )
+                            .toggleStyle(.switch)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.90))
+                        } else {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(label)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.75))
+                                TextField(
+                                    item.schema["description"]?.stringValue ?? label,
+                                    text: Binding(
+                                        get: { textValues[item.key] ?? (item.schema["default"]?.stringValue ?? "") },
+                                        set: { textValues[item.key] = $0 }
+                                    )
+                                )
+                                .textFieldStyle(.roundedBorder)
+                            }
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                if request.mode == .url, let url = request.url {
+                    Button {
+                        NSWorkspace.shared.open(url)
+                    } label: {
+                        Label("Open Verification URL", systemImage: "arrow.up.right.square")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                            .background(accentColor.opacity(0.24))
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+
+                Button("Cancel") {
+                    onRespond(.cancel, nil)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11.5, weight: .medium))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.08))
+                .foregroundStyle(.white.opacity(0.80))
+                .clipShape(Capsule())
+
+                Button("Deny") {
+                    onRespond(.decline, nil)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11.5, weight: .semibold))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .background(Color.red.opacity(0.20))
+                .foregroundStyle(.red.opacity(0.95))
+                .clipShape(Capsule())
+
+                Button(request.mode == .clientApproval ? "Allow once" : "Accept") {
+                    var content: [String: JSONValue] = [:]
+                    for item in schemaProperties {
+                        let type = item.schema["type"]?.stringValue ?? "string"
+                        if type == "boolean" {
+                            let val = boolValues[item.key] ?? (item.schema["default"]?.boolValue ?? true)
+                            content[item.key] = .bool(val)
+                        } else {
+                            let val = textValues[item.key] ?? (item.schema["default"]?.stringValue ?? "")
+                            content[item.key] = .string(val)
+                        }
+                    }
+                    onRespond(.accept, content.isEmpty ? nil : content)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11.5, weight: .semibold))
+                .padding(.horizontal, 13)
+                .padding(.vertical, 6)
+                .background(Color.green.opacity(0.28))
+                .foregroundStyle(.white)
+                .clipShape(Capsule())
+            }
+        }
+        .padding(13)
+        .liquidGlass(cornerRadius: 16, glowColor: .orange, material: .hudWindow)
     }
 }

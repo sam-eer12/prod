@@ -142,14 +142,35 @@ struct MenuBarPopoverView: View {
                     Image(systemName: "cpu")
                         .font(.system(size: 10.5))
                         .foregroundStyle(accentColor)
-                    Text("\(viewModel.effectiveThreadCount)T · \(viewModel.configuredProviders.count) Key(s)")
-                        .font(.system(size: 11, design: .monospaced))
+                    Text("\(viewModel.effectiveThreadCount)T · \(viewModel.configuredProviders.count) Key(s) · \(viewModel.activeMCPToolCount) MCP")
+                        .font(.system(size: 10.5, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.80))
                 }
                 .padding(.vertical, 6)
                 .padding(.horizontal, 10)
                 .background(Color.white.opacity(0.06))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
+            if !viewModel.pendingElicitations.isEmpty {
+                Button {
+                    onOpenWorkspace()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "shield.lefthalf.filled")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                        Text("\(viewModel.pendingElicitations.count) MCP prompt(s) awaiting response")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
 
             HStack(spacing: 8) {

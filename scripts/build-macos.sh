@@ -73,6 +73,19 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+GOOGLE_PLIST="$MACOS_DIR/Sources/BrokBotApp/Resources/GoogleService-Info.plist"
+if [[ -f "$GOOGLE_PLIST" ]]; then
+    REVERSED_CLIENT_ID="$(/usr/libexec/PlistBuddy -c "Print :REVERSED_CLIENT_ID" "$GOOGLE_PLIST" 2>/dev/null || true)"
+    if [[ -n "$REVERSED_CLIENT_ID" ]]; then
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$CONTENTS_DIR/Info.plist"
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$CONTENTS_DIR/Info.plist"
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleTypeRole string Editor" "$CONTENTS_DIR/Info.plist"
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string org.brokbot.mac.google-oauth" "$CONTENTS_DIR/Info.plist"
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$CONTENTS_DIR/Info.plist"
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $REVERSED_CLIENT_ID" "$CONTENTS_DIR/Info.plist"
+    fi
+fi
+
 echo "[BrokBot] Ad-hoc signing BrokBot.app..."
 codesign --force --deep --sign - "$APP_BUNDLE"
 

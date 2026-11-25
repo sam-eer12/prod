@@ -60,8 +60,40 @@ final class BrokBotAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isHeadless = CommandLine.arguments.contains("--background")
 
-        localNotificationManager.onOpenWorkspaceRequested = { [weak self] in
+        localNotificationManager.onOpenWorkspaceRequested = { [weak self] requestID in
             self?.showMainWindow()
+            if let requestID {
+                Task { @MainActor [weak self] in
+                    await self?.workspaceViewModel.openAttentionRequest(requestID: requestID)
+                }
+            }
+        }
+        localNotificationManager.onActionReceived = { [weak self] action, _, userInfo in
+            guard let self,
+                  let rawID = userInfo["request_id"] ?? userInfo["elicitation_id"],
+                  let requestID = UUID(uuidString: rawID) else {
+                return
+            }
+            switch action {
+            case .approve:
+                self.workspaceViewModel.respondToElicitation(requestID: requestID, action: .accept)
+            case .deny:
+                self.workspaceViewModel.respondToElicitation(requestID: requestID, action: .decline)
+            case .reviewInApp:
+                self.showMainWindow()
+                Task { @MainActor [weak self] in
+                    await self?.workspaceViewModel.openAttentionRequest(requestID: requestID)
+                }
+            }
+        }
+        workspaceViewModel.onNotifyAttention = { [weak self] payload in
+            guard let self else { return }
+            Task {
+                _ = await self.localNotificationManager.scheduleNotification(payload)
+            }
+        }
+        workspaceViewModel.onDismissNotification = { [weak self] requestID in
+            self?.localNotificationManager.dismissNotification(requestID: requestID)
         }
         localNotificationManager.configureIfBundled()
 
