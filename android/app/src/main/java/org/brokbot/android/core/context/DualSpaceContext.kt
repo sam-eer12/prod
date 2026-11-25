@@ -3,6 +3,7 @@ package org.brokbot.android.core.context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.brokbot.android.core.browser.BrowserLink
 import java.util.UUID
 
 /**
@@ -23,7 +24,8 @@ data class WorkingTurn(
     val role: TurnRole,
     val content: String,
     val timestampMillis: Long = System.currentTimeMillis(),
-    val estimatedTokens: Int = estimateTokenCount(content)
+    val estimatedTokens: Int = estimateTokenCount(content),
+    val links: List<BrowserLink> = emptyList()
 ) {
     companion object {
         fun estimateTokenCount(text: String): Int {
@@ -51,11 +53,17 @@ class WorkingContextStore(
     private val _turns = MutableStateFlow<List<WorkingTurn>>(emptyList())
     val turnsFlow: StateFlow<List<WorkingTurn>> = _turns.asStateFlow()
 
-    fun append(role: TurnRole, content: String, timestampMillis: Long = System.currentTimeMillis()): WorkingTurn {
+    fun append(
+        role: TurnRole,
+        content: String,
+        timestampMillis: Long = System.currentTimeMillis(),
+        links: List<BrowserLink> = emptyList()
+    ): WorkingTurn {
         val turn = WorkingTurn(
             role = role,
             content = content.trim(),
-            timestampMillis = timestampMillis
+            timestampMillis = timestampMillis,
+            links = links
         )
         synchronized(lock) {
             mutableTurns.addLast(turn)

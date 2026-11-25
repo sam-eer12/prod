@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "159599159315",
+    "project_id": "brokbot-auth-2026",
+    "storage_bucket": "brokbot-auth-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:159599159315:android:ddea8c4beaf299695737e6",
+        "android_client_info": {
+          "package_name": "org.brokbot.android"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "159599159315-q51mr5lgbvdiugbhnhli796cq7vj0o9c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBiZwaN0cHR2ONKOZUv2NIq01V332Buvrw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "159599159315-q51mr5lgbvdiugbhnhli796cq7vj0o9c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
