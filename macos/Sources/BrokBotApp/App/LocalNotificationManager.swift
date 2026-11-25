@@ -43,8 +43,13 @@ final class LocalNotificationManager: NSObject, ObservableObject {
             return
         }
 
+        let rawStatus = await fetchAuthorizationStatusRaw()
+        authorizationStatus = UNAuthorizationStatus(rawValue: rawStatus) ?? .notDetermined
+    }
+
+    nonisolated private func fetchAuthorizationStatusRaw() async -> Int {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
-        authorizationStatus = settings.authorizationStatus
+        return settings.authorizationStatus.rawValue
     }
 
     /// Requests user authorization for banners, sounds, and badges when running inside `BrokBot.app`.
@@ -78,10 +83,11 @@ final class LocalNotificationManager: NSObject, ObservableObject {
         }
 
         let center = UNUserNotificationCenter.current()
-        let settings = await center.notificationSettings()
-        authorizationStatus = settings.authorizationStatus
+        let rawStatus = await fetchAuthorizationStatusRaw()
+        let status = UNAuthorizationStatus(rawValue: rawStatus) ?? .notDetermined
+        authorizationStatus = status
 
-        switch settings.authorizationStatus {
+        switch status {
         case .notDetermined:
             let granted = await requestAuthorization()
             guard granted else { return false }
