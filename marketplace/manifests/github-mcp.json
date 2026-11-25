@@ -1,0 +1,42 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "github-mcp",
+  "name": "GitHub (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official GitHub remote Streamable HTTP MCP server for inspecting repositories, issues, and pull requests with a scoped Personal Access Token.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://api.githubcopilot.com/mcp/"
+  },
+  "auth": {
+    "type": "bearer",
+    "scopes": ["repo", "read:user"],
+    "setupFields": [
+      {
+        "key": "bearer_token",
+        "label": "GitHub Scoped Personal Access Token",
+        "secret": true,
+        "required": true,
+        "placeholder": "github_pat_..."
+      }
+    ]
+  },
+  "permissions": [
+    "github.repos.read",
+    "github.issues.read",
+    "github.pull_requests.read"
+  ],
+  "tools": [
+    {
+      "name": "search_repositories",
+      "description": "Search GitHub repositories, code, issues, and pull requests.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "figma-mcp",
+  "name": "Figma (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Figma hosted Streamable HTTP MCP server for inspecting design files, components, and variables via OAuth 2.1 + PKCE.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.figma.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": []
+  },
+  "permissions": [
+    "figma.files.read",
+    "figma.variables.read"
+  ],
+  "tools": [
+    {
+      "name": "get_design_context",
+      "description": "Inspect Figma design files, nodes, and design system variables.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

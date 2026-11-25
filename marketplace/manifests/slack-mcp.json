@@ -1,0 +1,34 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "slack-mcp",
+  "name": "Slack (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Slack hosted Streamable HTTP MCP server for searching channels and workspace messages via OAuth 2.1 + PKCE.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.slack.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": []
+  },
+  "permissions": [
+    "slack.channels.read",
+    "slack.messages.read"
+  ],
+  "tools": [
+    {
+      "name": "search_messages",
+      "description": "Search Slack workspace channels and messages on demand.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

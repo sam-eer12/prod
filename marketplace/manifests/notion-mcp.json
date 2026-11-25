@@ -1,0 +1,34 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "notion-mcp",
+  "name": "Notion (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Notion hosted Streamable HTTP MCP server for searching pages, databases, and comments using OAuth 2.1 + PKCE.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.notion.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": []
+  },
+  "permissions": [
+    "notion.pages.read",
+    "notion.databases.read"
+  ],
+  "tools": [
+    {
+      "name": "notion_search",
+      "description": "Search Notion workspace pages and databases via Notion's hosted MCP server.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

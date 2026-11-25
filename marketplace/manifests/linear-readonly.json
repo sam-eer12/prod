@@ -1,0 +1,43 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "linear-readonly",
+  "name": "Linear (Read-Only MCP)",
+  "version": "1.0.0",
+  "description": "Official Linear hosted Streamable HTTP MCP server in read-only mode. Query issues, projects, cycles, and teams via OAuth 2.1 PKCE or a vaulted Personal API Key.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.linear.app/mcp/readonly"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": ["read"],
+    "setupFields": [
+      {
+        "key": "bearer_token",
+        "label": "Personal API Key (Optional if using OAuth Sign-In)",
+        "secret": true,
+        "required": false,
+        "placeholder": "lin_api_..."
+      }
+    ]
+  },
+  "permissions": [
+    "linear.issues.read",
+    "linear.projects.read",
+    "linear.teams.read"
+  ],
+  "tools": [
+    {
+      "name": "list_issues",
+      "description": "Discover and read Linear issues, status, priority, and cycle metadata.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "netlify-mcp",
+  "name": "Netlify (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Netlify hosted Streamable HTTP MCP server for inspecting sites and deployments via OAuth 2.1 + PKCE or a vaulted Personal Access Token.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.netlify.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": [
+      {
+        "key": "bearer_token",
+        "label": "Netlify Personal Access Token (Optional if using OAuth Sign-In)",
+        "secret": true,
+        "required": false,
+        "placeholder": "nfp_..."
+      }
+    ]
+  },
+  "permissions": [
+    "netlify.sites.read",
+    "netlify.deploys.read"
+  ],
+  "tools": [
+    {
+      "name": "list_sites",
+      "description": "List Netlify sites and recent deployment statuses.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

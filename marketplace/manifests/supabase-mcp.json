@@ -1,0 +1,43 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "supabase-mcp",
+  "name": "Supabase (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Supabase hosted Streamable HTTP MCP server for inspecting projects, database schemas, and service logs via OAuth 2.1 + PKCE or a vaulted Personal Access Token.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.supabase.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": [
+      {
+        "key": "bearer_token",
+        "label": "Supabase Personal Access Token (Optional if using OAuth Sign-In)",
+        "secret": true,
+        "required": false,
+        "placeholder": "sbp_..."
+      }
+    ]
+  },
+  "permissions": [
+    "supabase.projects.read",
+    "supabase.database.read",
+    "supabase.logs.read"
+  ],
+  "tools": [
+    {
+      "name": "list_projects",
+      "description": "Inspect Supabase projects, database tables, and project logs.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

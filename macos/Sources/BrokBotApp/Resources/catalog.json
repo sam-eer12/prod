@@ -1,0 +1,1038 @@
+{
+  "schemaVersion": "1.0.0",
+  "updatedAt": "2026-11-25T00:00:00Z",
+  "connectors": [
+    {
+      "id": "gmail-mcp",
+      "name": "Gmail (Read-Only · Personal Mode)",
+      "version": "1.0.0",
+      "description": "Google's official stateless Streamable HTTP MCP server for Gmail on the free Standard Tier (Personal Mode OAuth). Read threads and messages on demand.",
+      "manifestPath": "manifests/gmail-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://gmailmcp.googleapis.com/mcp/v1"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "authorizationEndpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+        "tokenEndpoint": "https://oauth2.googleapis.com/token",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [
+          "https://www.googleapis.com/auth/gmail.readonly"
+        ],
+        "setupFields": [
+          {
+            "key": "client_id",
+            "label": "Google Cloud OAuth Desktop Client ID (Personal Mode)",
+            "secret": false,
+            "required": true,
+            "placeholder": "1234567890-abc.apps.googleusercontent.com"
+          },
+          {
+            "key": "client_secret",
+            "label": "Google OAuth Client Secret (Optional)",
+            "secret": true,
+            "required": false,
+            "placeholder": "GOCSPX-..."
+          }
+        ]
+      },
+      "permissions": [
+        "gmail.readonly"
+      ],
+      "tools": [
+        {
+          "name": "list_messages",
+          "description": "Search and read Gmail messages on demand via Google's official stateless MCP server.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "google-drive-mcp",
+      "name": "Google Drive (Read-Only · Personal Mode)",
+      "version": "1.0.0",
+      "description": "Google's official stateless Streamable HTTP MCP server for Google Drive on the free Standard Tier (Personal Mode OAuth). Search and inspect Drive files on demand.",
+      "manifestPath": "manifests/google-drive-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://drivemcp.googleapis.com/mcp/v1"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "authorizationEndpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+        "tokenEndpoint": "https://oauth2.googleapis.com/token",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [
+          "https://www.googleapis.com/auth/drive.readonly"
+        ],
+        "setupFields": [
+          {
+            "key": "client_id",
+            "label": "Google Cloud OAuth Desktop Client ID (Personal Mode)",
+            "secret": false,
+            "required": true,
+            "placeholder": "1234567890-abc.apps.googleusercontent.com"
+          },
+          {
+            "key": "client_secret",
+            "label": "Google OAuth Client Secret (Optional)",
+            "secret": true,
+            "required": false,
+            "placeholder": "GOCSPX-..."
+          }
+        ]
+      },
+      "permissions": [
+        "drive.readonly"
+      ],
+      "tools": [
+        {
+          "name": "search_files",
+          "description": "Search and inspect Google Drive files and folders on demand via Google's official stateless MCP server.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "google-docs-mcp",
+      "name": "Google Docs (Read-Only · Personal Mode)",
+      "version": "1.0.0",
+      "description": "Google's official stateless Streamable HTTP MCP server for Google Docs on the free Standard Tier (5,000 requests/day per Google Cloud project, Personal Mode OAuth).",
+      "manifestPath": "manifests/google-docs-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://docsmcp.googleapis.com/mcp/v1"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "authorizationEndpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+        "tokenEndpoint": "https://oauth2.googleapis.com/token",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [
+          "https://www.googleapis.com/auth/documents.readonly"
+        ],
+        "setupFields": [
+          {
+            "key": "client_id",
+            "label": "Google Cloud OAuth Desktop Client ID (Personal Mode)",
+            "secret": false,
+            "required": true,
+            "placeholder": "1234567890-abc.apps.googleusercontent.com"
+          },
+          {
+            "key": "client_secret",
+            "label": "Google OAuth Client Secret (Optional)",
+            "secret": true,
+            "required": false,
+            "placeholder": "GOCSPX-..."
+          }
+        ]
+      },
+      "permissions": [
+        "documents.readonly"
+      ],
+      "tools": [
+        {
+          "name": "get_document",
+          "description": "Read Google Docs document content and structure on demand via Google's official stateless MCP server.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "google-slides-mcp",
+      "name": "Google Slides (Read-Only · Personal Mode)",
+      "version": "1.0.0",
+      "description": "Google's official stateless Streamable HTTP MCP server for Google Slides on the free Standard Tier (5,000 requests/day per Google Cloud project, Personal Mode OAuth).",
+      "manifestPath": "manifests/google-slides-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://slidesmcp.googleapis.com/mcp/v1"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "authorizationEndpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+        "tokenEndpoint": "https://oauth2.googleapis.com/token",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [
+          "https://www.googleapis.com/auth/presentations.readonly"
+        ],
+        "setupFields": [
+          {
+            "key": "client_id",
+            "label": "Google Cloud OAuth Desktop Client ID (Personal Mode)",
+            "secret": false,
+            "required": true,
+            "placeholder": "1234567890-abc.apps.googleusercontent.com"
+          },
+          {
+            "key": "client_secret",
+            "label": "Google OAuth Client Secret (Optional)",
+            "secret": true,
+            "required": false,
+            "placeholder": "GOCSPX-..."
+          }
+        ]
+      },
+      "permissions": [
+        "presentations.readonly"
+      ],
+      "tools": [
+        {
+          "name": "get_presentation",
+          "description": "Read Google Slides presentation metadata and slide content on demand via Google's official stateless MCP server.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "google-sheets-mcp",
+      "name": "Google Sheets (Read-Only · Personal Mode)",
+      "version": "1.0.0",
+      "description": "Google's official stateless Streamable HTTP MCP server for Google Sheets on the free Standard Tier (Personal Mode OAuth). Read spreadsheets and cell ranges on demand.",
+      "manifestPath": "manifests/google-sheets-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://sheetsmcp.googleapis.com/mcp/v1"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "authorizationEndpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+        "tokenEndpoint": "https://oauth2.googleapis.com/token",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [
+          "https://www.googleapis.com/auth/spreadsheets.readonly"
+        ],
+        "setupFields": [
+          {
+            "key": "client_id",
+            "label": "Google Cloud OAuth Desktop Client ID (Personal Mode)",
+            "secret": false,
+            "required": true,
+            "placeholder": "1234567890-abc.apps.googleusercontent.com"
+          },
+          {
+            "key": "client_secret",
+            "label": "Google OAuth Client Secret (Optional)",
+            "secret": true,
+            "required": false,
+            "placeholder": "GOCSPX-..."
+          }
+        ]
+      },
+      "permissions": [
+        "spreadsheets.readonly"
+      ],
+      "tools": [
+        {
+          "name": "get_spreadsheet",
+          "description": "Read Google Sheets metadata and cell ranges on demand via Google's official stateless MCP server.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "google-calendar-mcp",
+      "name": "Google Calendar (Read-Only · Personal Mode)",
+      "version": "1.0.0",
+      "description": "Google's official stateless Streamable HTTP MCP server for Calendar in Personal Mode (BYO Google Cloud project OAuth Client ID). On-demand calls only with server-driven MCP elicitation.",
+      "manifestPath": "manifests/google-calendar-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://calendarmcp.googleapis.com/mcp/v1"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "authorizationEndpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+        "tokenEndpoint": "https://oauth2.googleapis.com/token",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [
+          "https://www.googleapis.com/auth/calendar.readonly"
+        ],
+        "setupFields": [
+          {
+            "key": "client_id",
+            "label": "Google Cloud OAuth Desktop Client ID (Personal Mode)",
+            "secret": false,
+            "required": true,
+            "placeholder": "1234567890-abc.apps.googleusercontent.com"
+          },
+          {
+            "key": "client_secret",
+            "label": "Google OAuth Client Secret (Optional)",
+            "secret": true,
+            "required": false,
+            "placeholder": "GOCSPX-..."
+          }
+        ]
+      },
+      "permissions": [
+        "calendar.readonly"
+      ],
+      "tools": [
+        {
+          "name": "list_events",
+          "description": "Fetch upcoming Google Calendar events on demand using Google's official stateless MCP server.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "vercel-mcp",
+      "name": "Vercel (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Vercel hosted Streamable HTTP MCP server for inspecting projects, deployments, domains, and build logs via OAuth 2.1 + PKCE.",
+      "manifestPath": "manifests/vercel-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.vercel.com"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": []
+      },
+      "permissions": [
+        "vercel.projects.read",
+        "vercel.deployments.read",
+        "vercel.logs.read"
+      ],
+      "tools": [
+        {
+          "name": "list_projects",
+          "description": "List Vercel projects, deployments, and runtime build logs.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "railway-mcp",
+      "name": "Railway (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Railway hosted Streamable HTTP MCP server for inspecting projects, services, deployments, and runtime logs via OAuth 2.1 + PKCE.",
+      "manifestPath": "manifests/railway-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.railway.com"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": []
+      },
+      "permissions": [
+        "railway.projects.read",
+        "railway.deployments.read",
+        "railway.logs.read"
+      ],
+      "tools": [
+        {
+          "name": "list_projects",
+          "description": "List Railway projects, services, deployments, and logs.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "cloudflare-mcp",
+      "name": "Cloudflare (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Cloudflare hosted Streamable HTTP MCP server for querying Workers, DNS records, and observability logs via OAuth 2.1 + PKCE or a vaulted API Token.",
+      "manifestPath": "manifests/cloudflare-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.cloudflare.com/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": [
+          {
+            "key": "bearer_token",
+            "label": "Cloudflare API Token (Optional if using OAuth Sign-In)",
+            "secret": true,
+            "required": false,
+            "placeholder": "cf_..."
+          }
+        ]
+      },
+      "permissions": [
+        "cloudflare.workers.read",
+        "cloudflare.dns.read",
+        "cloudflare.logs.read"
+      ],
+      "tools": [
+        {
+          "name": "list_workers",
+          "description": "Inspect Cloudflare Workers, DNS zones, and observability logs.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "netlify-mcp",
+      "name": "Netlify (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Netlify hosted Streamable HTTP MCP server for inspecting sites and deployments via OAuth 2.1 + PKCE or a vaulted Personal Access Token.",
+      "manifestPath": "manifests/netlify-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.netlify.com/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": [
+          {
+            "key": "bearer_token",
+            "label": "Netlify Personal Access Token (Optional if using OAuth Sign-In)",
+            "secret": true,
+            "required": false,
+            "placeholder": "nfp_..."
+          }
+        ]
+      },
+      "permissions": [
+        "netlify.sites.read",
+        "netlify.deploys.read"
+      ],
+      "tools": [
+        {
+          "name": "list_sites",
+          "description": "List Netlify sites and recent deployment statuses.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "render-mcp",
+      "name": "Render (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Render hosted Streamable HTTP MCP server for querying services, deployments, and logs via OAuth 2.1 + PKCE or a vaulted API Key.",
+      "manifestPath": "manifests/render-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.render.com/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": [
+          {
+            "key": "bearer_token",
+            "label": "Render API Key (Optional if using OAuth Sign-In)",
+            "secret": true,
+            "required": false,
+            "placeholder": "rnd_..."
+          }
+        ]
+      },
+      "permissions": [
+        "render.services.read",
+        "render.deploys.read",
+        "render.logs.read"
+      ],
+      "tools": [
+        {
+          "name": "list_services",
+          "description": "List Render services, recent deploys, and log streams.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "stripe-mcp",
+      "name": "Stripe (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Stripe hosted Streamable HTTP MCP server for inspecting customers, invoices, subscriptions, and payment objects via OAuth 2.1 + PKCE or a vaulted Restricted API Key.",
+      "manifestPath": "manifests/stripe-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.stripe.com"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": [
+          {
+            "key": "bearer_token",
+            "label": "Restricted API Key (Optional if using OAuth Sign-In)",
+            "secret": true,
+            "required": false,
+            "placeholder": "rk_live_..."
+          }
+        ]
+      },
+      "permissions": [
+        "stripe.customers.read",
+        "stripe.invoices.read",
+        "stripe.subscriptions.read"
+      ],
+      "tools": [
+        {
+          "name": "list_customers",
+          "description": "Inspect Stripe customers, invoices, and subscription statuses.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "supabase-mcp",
+      "name": "Supabase (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Supabase hosted Streamable HTTP MCP server for inspecting projects, database schemas, and service logs via OAuth 2.1 + PKCE or a vaulted Personal Access Token.",
+      "manifestPath": "manifests/supabase-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.supabase.com/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": [
+          {
+            "key": "bearer_token",
+            "label": "Supabase Personal Access Token (Optional if using OAuth Sign-In)",
+            "secret": true,
+            "required": false,
+            "placeholder": "sbp_..."
+          }
+        ]
+      },
+      "permissions": [
+        "supabase.projects.read",
+        "supabase.database.read",
+        "supabase.logs.read"
+      ],
+      "tools": [
+        {
+          "name": "list_projects",
+          "description": "Inspect Supabase projects, database tables, and project logs.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "neon-mcp",
+      "name": "Neon (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Neon hosted Streamable HTTP MCP server for inspecting Serverless Postgres projects, branches, and read-only SQL queries via OAuth 2.1 + PKCE or a vaulted API Key.",
+      "manifestPath": "manifests/neon-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.neon.tech/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": [
+          {
+            "key": "bearer_token",
+            "label": "Neon API Key (Optional if using OAuth Sign-In)",
+            "secret": true,
+            "required": false,
+            "placeholder": "napi_..."
+          }
+        ]
+      },
+      "permissions": [
+        "neon.projects.read",
+        "neon.branches.read",
+        "neon.sql.read"
+      ],
+      "tools": [
+        {
+          "name": "list_projects",
+          "description": "List Neon Postgres projects, branches, and schema metadata.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "github-mcp",
+      "name": "GitHub (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official GitHub remote Streamable HTTP MCP server for inspecting repositories, issues, and pull requests with a scoped Personal Access Token.",
+      "manifestPath": "manifests/github-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://api.githubcopilot.com/mcp/"
+      },
+      "auth": {
+        "type": "bearer",
+        "scopes": ["repo", "read:user"],
+        "setupFields": [
+          {
+            "key": "bearer_token",
+            "label": "GitHub Scoped Personal Access Token",
+            "secret": true,
+            "required": true,
+            "placeholder": "github_pat_..."
+          }
+        ]
+      },
+      "permissions": [
+        "github.repos.read",
+        "github.issues.read",
+        "github.pull_requests.read"
+      ],
+      "tools": [
+        {
+          "name": "search_repositories",
+          "description": "Search GitHub repositories, code, issues, and pull requests.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "sentry-mcp",
+      "name": "Sentry (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Sentry hosted Streamable HTTP MCP server for inspecting issues, stack traces, projects, and events via OAuth 2.1 + PKCE.",
+      "manifestPath": "manifests/sentry-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.sentry.dev/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": []
+      },
+      "permissions": [
+        "sentry.issues.read",
+        "sentry.projects.read",
+        "sentry.events.read"
+      ],
+      "tools": [
+        {
+          "name": "list_issues",
+          "description": "Search and inspect Sentry issues, stack traces, and error events.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "posthog-mcp",
+      "name": "PostHog (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official PostHog hosted Streamable HTTP MCP server for querying product insights, feature flags, and event analytics via OAuth 2.1 + PKCE or a vaulted Personal API Key.",
+      "manifestPath": "manifests/posthog-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.posthog.com/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": [
+          {
+            "key": "bearer_token",
+            "label": "PostHog Personal API Key (Optional if using OAuth Sign-In)",
+            "secret": true,
+            "required": false,
+            "placeholder": "phx_..."
+          }
+        ]
+      },
+      "permissions": [
+        "posthog.insights.read",
+        "posthog.flags.read",
+        "posthog.events.read"
+      ],
+      "tools": [
+        {
+          "name": "list_insights",
+          "description": "Query PostHog analytics insights, feature flags, and events.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "linear-readonly",
+      "name": "Linear (Read-Only MCP)",
+      "version": "1.0.0",
+      "description": "Official Linear hosted Streamable HTTP MCP server in read-only mode. Query issues, projects, cycles, and teams via OAuth 2.1 PKCE or a vaulted Personal API Key.",
+      "manifestPath": "manifests/linear-readonly.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.linear.app/mcp/readonly"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": ["read"],
+        "setupFields": [
+          {
+            "key": "bearer_token",
+            "label": "Personal API Key (Optional if using OAuth Sign-In)",
+            "secret": true,
+            "required": false,
+            "placeholder": "lin_api_..."
+          }
+        ]
+      },
+      "permissions": [
+        "linear.issues.read",
+        "linear.projects.read",
+        "linear.teams.read"
+      ],
+      "tools": [
+        {
+          "name": "list_issues",
+          "description": "Discover and read Linear issues, status, priority, and cycle metadata.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "notion-mcp",
+      "name": "Notion (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Notion hosted Streamable HTTP MCP server for searching pages, databases, and comments using OAuth 2.1 + PKCE.",
+      "manifestPath": "manifests/notion-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.notion.com/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": []
+      },
+      "permissions": [
+        "notion.pages.read",
+        "notion.databases.read"
+      ],
+      "tools": [
+        {
+          "name": "notion_search",
+          "description": "Search Notion workspace pages and databases via Notion's hosted MCP server.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "atlassian-mcp",
+      "name": "Atlassian Jira & Confluence (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Atlassian hosted Streamable HTTP MCP server for searching Jira issues and Confluence pages via OAuth 2.1 + PKCE.",
+      "manifestPath": "manifests/atlassian-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.atlassian.com/v2/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": []
+      },
+      "permissions": [
+        "jira.issues.read",
+        "confluence.pages.read"
+      ],
+      "tools": [
+        {
+          "name": "search_issues",
+          "description": "Search Jira issues and Confluence pages via Atlassian's hosted MCP server.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "slack-mcp",
+      "name": "Slack (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Slack hosted Streamable HTTP MCP server for searching channels and workspace messages via OAuth 2.1 + PKCE.",
+      "manifestPath": "manifests/slack-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.slack.com/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": []
+      },
+      "permissions": [
+        "slack.channels.read",
+        "slack.messages.read"
+      ],
+      "tools": [
+        {
+          "name": "search_messages",
+          "description": "Search Slack workspace channels and messages on demand.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "figma-mcp",
+      "name": "Figma (Hosted MCP)",
+      "version": "1.0.0",
+      "description": "Official Figma hosted Streamable HTTP MCP server for inspecting design files, components, and variables via OAuth 2.1 + PKCE.",
+      "manifestPath": "manifests/figma-mcp.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "mcp_streamable_http",
+        "baseUrl": "https://mcp.figma.com/mcp"
+      },
+      "auth": {
+        "type": "oauth2_pkce",
+        "redirectUri": "http://127.0.0.1:48912/callback",
+        "scopes": [],
+        "setupFields": []
+      },
+      "permissions": [
+        "figma.files.read",
+        "figma.variables.read"
+      ],
+      "tools": [
+        {
+          "name": "get_design_context",
+          "description": "Inspect Figma design files, nodes, and design system variables.",
+          "requiresApproval": false
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    },
+    {
+      "id": "blender-3d",
+      "name": "Blender 3D Bridge",
+      "version": "1.0.0",
+      "description": "Local TCP JSON-RPC 2.0 bridge for Blender scene inspection, guarded bpy script execution, and inline viewport PNG preview rendering.",
+      "manifestPath": "manifests/blender-3d.json",
+      "platforms": ["macos"],
+      "transport": {
+        "type": "tcp_jsonrpc",
+        "host": "127.0.0.1",
+        "port": 9876
+      },
+      "auth": {
+        "type": "none",
+        "scopes": [],
+        "setupFields": [
+          {
+            "key": "host",
+            "label": "Blender Socket Host",
+            "secret": false,
+            "required": true,
+            "defaultValue": "127.0.0.1",
+            "placeholder": "127.0.0.1"
+          },
+          {
+            "key": "port",
+            "label": "Blender Socket Port",
+            "secret": false,
+            "required": true,
+            "defaultValue": "9876",
+            "placeholder": "9876"
+          }
+        ]
+      },
+      "permissions": [
+        "local_socket",
+        "execute_bpy_script",
+        "render_viewport"
+      ],
+      "tools": [
+        {
+          "name": "blender_get_scene_info",
+          "description": "Inspect active Blender objects, cameras, lights, materials, and render settings.",
+          "requiresApproval": false,
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "includeMaterials": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          }
+        },
+        {
+          "name": "blender_execute_script",
+          "description": "Execute a generated Python (bpy) script inside the connected Blender instance.",
+          "requiresApproval": true,
+          "inputSchema": {
+            "type": "object",
+            "required": ["code"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Python script using Blender's bpy module."
+              }
+            }
+          }
+        },
+        {
+          "name": "blender_render_preview",
+          "description": "Render the active camera or viewport and return an inline PNG buffer.",
+          "requiresApproval": false,
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "integer",
+                "default": 1920
+              },
+              "height": {
+                "type": "integer",
+                "default": 1080
+              }
+            }
+          }
+        }
+      ],
+      "signature": {
+        "algorithm": "ed25519",
+        "keyId": "brokbot-marketplace-dev-2026",
+        "value": "unsigned-starter-template"
+      }
+    }
+  ]
+}

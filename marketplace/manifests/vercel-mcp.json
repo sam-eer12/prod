@@ -1,0 +1,35 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "vercel-mcp",
+  "name": "Vercel (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Vercel hosted Streamable HTTP MCP server for inspecting projects, deployments, domains, and build logs via OAuth 2.1 + PKCE.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.vercel.com"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": []
+  },
+  "permissions": [
+    "vercel.projects.read",
+    "vercel.deployments.read",
+    "vercel.logs.read"
+  ],
+  "tools": [
+    {
+      "name": "list_projects",
+      "description": "List Vercel projects, deployments, and runtime build logs.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

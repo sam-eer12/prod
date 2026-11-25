@@ -1,0 +1,43 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "cloudflare-mcp",
+  "name": "Cloudflare (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Cloudflare hosted Streamable HTTP MCP server for querying Workers, DNS records, and observability logs via OAuth 2.1 + PKCE or a vaulted API Token.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.cloudflare.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": [
+      {
+        "key": "bearer_token",
+        "label": "Cloudflare API Token (Optional if using OAuth Sign-In)",
+        "secret": true,
+        "required": false,
+        "placeholder": "cf_..."
+      }
+    ]
+  },
+  "permissions": [
+    "cloudflare.workers.read",
+    "cloudflare.dns.read",
+    "cloudflare.logs.read"
+  ],
+  "tools": [
+    {
+      "name": "list_workers",
+      "description": "Inspect Cloudflare Workers, DNS zones, and observability logs.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "../schema/connector-manifest.schema.json",
+  "id": "render-mcp",
+  "name": "Render (Hosted MCP)",
+  "version": "1.0.0",
+  "description": "Official Render hosted Streamable HTTP MCP server for querying services, deployments, and logs via OAuth 2.1 + PKCE or a vaulted API Key.",
+  "platforms": ["macos"],
+  "transport": {
+    "type": "mcp_streamable_http",
+    "baseUrl": "https://mcp.render.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2_pkce",
+    "redirectUri": "http://127.0.0.1:48912/callback",
+    "scopes": [],
+    "setupFields": [
+      {
+        "key": "bearer_token",
+        "label": "Render API Key (Optional if using OAuth Sign-In)",
+        "secret": true,
+        "required": false,
+        "placeholder": "rnd_..."
+      }
+    ]
+  },
+  "permissions": [
+    "render.services.read",
+    "render.deploys.read",
+    "render.logs.read"
+  ],
+  "tools": [
+    {
+      "name": "list_services",
+      "description": "List Render services, recent deploys, and log streams.",
+      "requiresApproval": false
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "brokbot-marketplace-dev-2026",
+    "value": "unsigned-starter-template"
+  }
+}
